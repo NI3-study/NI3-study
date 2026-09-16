@@ -34,6 +34,7 @@ NI3 내부 기초 스터디를 위한 한국어 학습 자료다. 독자는 다�
 
 ## 파일 안내
 
+- `docs/00_meeting_2026-09-17.md`: Foundation 01 모임(3인) 진행 허브 — 예습 경로, 진행표와 역할 회전, 인터랙티브 체크포인트, 산출물 템플릿
 - `docs/01_gnn_gentle_guide.md`: Distill 글의 입문자용 해설
 - `docs/02_kipf2017_gcn_guide.md`: Kipf–Welling 논문의 절별 해설
 - `docs/03_bridge_mlp_to_gcn.md`: 이미 아는 MLP에서 GCN으로 가는 짧은 연결 문서

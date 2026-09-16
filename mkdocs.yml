@@ -34,6 +34,7 @@ theme:
 
 nav:
   - 시작하기: index.md
+  - 0. 모임 진행 (2026-09-17): 00_meeting_2026-09-17.md
   - 1. GNN 입문: 01_gnn_gentle_guide.md
   - 2. GCN 논문 해설: 02_kipf2017_gcn_guide.md
   - 3. MLP에서 GCN까지: 03_bridge_mlp_to_gcn.md
