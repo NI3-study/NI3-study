@@ -1,0 +1,23 @@
+:root {
+  --md-text-font: "Pretendard", "Noto Sans KR", "Malgun Gothic", sans-serif;
+  --md-code-font: "Cascadia Code", "D2Coding", monospace;
+}
+
+.md-typeset {
+  line-height: 1.75;
+}
+
+.md-typeset h1,
+.md-typeset h2,
+.md-typeset h3 {
+  letter-spacing: -0.02em;
+}
+
+.md-typeset table:not([class]) {
+  font-size: 0.78rem;
+}
+
+.arithmatex {
+  overflow-x: auto;
+  overflow-y: hidden;
+}

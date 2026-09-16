@@ -1,0 +1,70 @@
+site_name: NI3 GNN Study
+site_url: https://ni3-study.github.io/NI3-study/
+site_description: MLP와 자료구조를 배운 학생을 위한 GNN·GCN 입문 자료
+site_author: NI3
+repo_url: https://github.com/ni3-study/NI3-study
+repo_name: ni3-study/NI3-study
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  language: ko
+  features:
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - content.code.copy
+    - search.suggest
+    - search.highlight
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: red
+      accent: red
+      toggle:
+        icon: material/brightness-7
+        name: 어두운 화면으로 전환
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: red
+      accent: red
+      toggle:
+        icon: material/brightness-4
+        name: 밝은 화면으로 전환
+
+nav:
+  - 시작하기: index.md
+  - 1. GNN 입문: 01_gnn_gentle_guide.md
+  - 2. GCN 논문 해설: 02_kipf2017_gcn_guide.md
+  - 3. MLP에서 GCN까지: 03_bridge_mlp_to_gcn.md
+  - 4. 실습과 토론: 04_exercises.md
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.superfences
+
+extra_javascript:
+  - javascripts/mathjax.js
+  - https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js
+
+extra_css:
+  - stylesheets/extra.css
+
+plugins:
+  - search:
+      lang: ko
+
+copyright: "NI3 GNN Study · 학습 자료의 인용과 원문 링크는 각 문서에서 확인하세요."
+
+strict: true

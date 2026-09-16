@@ -1,0 +1,45 @@
+# NI3 기초 GNN 스터디
+
+MLP와 역전파를 이해하고 자료구조 과목에서 그래프를 배운 학생을 위한 GNN·GCN 입문 자료입니다.
+
+이 사이트는 두 자료를 중심으로 구성했습니다.
+
+- Sanchez-Lengeling et al., [A Gentle Introduction to Graph Neural Networks](https://distill.pub/2021/gnn-intro/), Distill, 2021
+- Thomas N. Kipf and Max Welling, [Semi-Supervised Classification with Graph Convolutional Networks](https://arxiv.org/abs/1609.02907), ICLR 2017
+
+원문을 그대로 번역하기보다, **이미 알고 있는 MLP와 그래프 자료구조에서 GCN으로 건너가는 과정**을 설명합니다.
+
+## 학습 목표
+
+이 자료를 모두 읽고 나면 다음을 할 수 있어야 합니다.
+
+1. 그래프 수준·정점 수준·간선 수준 예측을 구분한다.
+2. 메시지 패싱을 자료구조의 이웃 순회와 연결해 설명한다.
+3. GCN의 한 층
+
+   $$
+   H^{(l+1)}=\sigma\!\left(\tilde D^{-1/2}\tilde A\tilde D^{-1/2}H^{(l)}W^{(l)}\right)
+   $$
+
+   에서 각 행렬의 의미와 차원을 설명한다.
+4. 작은 그래프에서 자기 연결, 차수 정규화, 한 층 출력을 손으로 계산한다.
+5. 원 논문의 결과와 이후 문헌에서 정착한 해석을 구분한다.
+
+## 권장 학습 순서
+
+| 회차 | 주제 | 읽을 문서 | 권장 활동 |
+|---|---|---|---|
+| 1 | 그래프 데이터와 GNN 직관 | [GNN 입문](01_gnn_gentle_guide.md) | 관심 데이터를 그래프로 표현하기 |
+| 2 | Kipf–Welling GCN | [GCN 논문 해설](02_kipf2017_gcn_guide.md) | 식의 차원과 4정점 예제 계산하기 |
+| 3 | MLP에서 GCN까지 | [연결 해설](03_bridge_mlp_to_gcn.md) | MLP와 GCN의 차이를 설명하기 |
+| 4 | 실습과 토론 | [문제와 해설](04_exercises.md) | 8개 문제를 조별로 해결하기 |
+
+## 자료를 읽는 방법
+
+- `[원문]`은 출처가 직접 설명하거나 보고한 내용입니다.
+- `[해설]`은 이해를 돕기 위한 비유, 연결 설명, 손계산입니다.
+- `[후대 용어]`는 2017년 논문 이후 널리 쓰이게 된 개념입니다.
+- 수식이 낯설면 행렬 전체보다 먼저 “한 정점이 어떤 이웃의 값을 받는가”를 확인하세요.
+
+!!! note "공개 자료 사용 원칙"
+    출처를 확인할 때에는 이 사이트의 요약만 인용하지 말고 원문을 함께 확인하세요. 원 논문과 Distill 글의 저작권은 각 저자와 발행처에 있습니다.
