@@ -21,3 +21,403 @@
   overflow-x: auto;
   overflow-y: hidden;
 }
+
+/* ─────────────────────────────────────────────────────────────
+   GNN 인터랙티브 시각화 (docs/javascripts/gnn-visuals.js)
+   색상은 모두 변수로만 지정해 라이트/다크 테마를 함께 지원한다.
+   정보는 색 외에 숫자·기호·선 굵기·점선으로도 중복 인코딩한다.
+   ───────────────────────────────────────────────────────────── */
+
+:root {
+  --gnn-surface: #fbfbfc;
+  --gnn-surface-alt: #f1f2f4;
+  --gnn-border: #d5d8dd;
+  --gnn-text: #23262b;
+  --gnn-muted: #62666d;
+  --gnn-line: #9aa0a7;
+  --gnn-line-off: #c7cbd1;
+
+  --gnn-focus-stroke: #a3231b;
+  --gnn-focus-fill: #f8e2df;
+  --gnn-focus-text: #6d150f;
+
+  --gnn-active-stroke: #145b73;
+  --gnn-active-fill: #ddedf3;
+  --gnn-active-text: #0c3f52;
+
+  --gnn-idle-stroke: #8b9099;
+  --gnn-idle-fill: #ffffff;
+  --gnn-idle-text: #40444a;
+}
+
+[data-md-color-scheme="slate"] {
+  --gnn-surface: #1f2229;
+  --gnn-surface-alt: #262a32;
+  --gnn-border: #3a3f49;
+  --gnn-text: #e6e8ec;
+  --gnn-muted: #a8aeb8;
+  --gnn-line: #7d8590;
+  --gnn-line-off: #4a505a;
+
+  --gnn-focus-stroke: #ff9c8f;
+  --gnn-focus-fill: #4a201c;
+  --gnn-focus-text: #ffd7d0;
+
+  --gnn-active-stroke: #7fd0e8;
+  --gnn-active-fill: #17343d;
+  --gnn-active-text: #cdeef8;
+
+  --gnn-idle-stroke: #767d88;
+  --gnn-idle-fill: #2a2e36;
+  --gnn-idle-text: #c6cad0;
+}
+
+.md-typeset .gnn-viz {
+  margin: 1.6em 0;
+  padding: 0.9rem 0.95rem 1rem;
+  border: 1px solid var(--gnn-border);
+  border-radius: 0.5rem;
+  background: var(--gnn-surface);
+  color: var(--gnn-text);
+}
+
+.md-typeset .gnn-viz__head {
+  margin-bottom: 0.7rem;
+}
+
+.md-typeset .gnn-viz__title {
+  margin: 0 0 0.25rem;
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.md-typeset .gnn-viz__desc {
+  margin: 0;
+  font-size: 0.68rem;
+  line-height: 1.6;
+  color: var(--gnn-muted);
+}
+
+/* ── 조작부 ── */
+
+.md-typeset .gnn-viz__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-bottom: 0.8rem;
+}
+
+.md-typeset .gnn-fieldset {
+  flex: 1 1 15rem;
+  min-width: 0;
+  margin: 0;
+  padding: 0.45rem 0.6rem 0.6rem;
+  border: 1px solid var(--gnn-border);
+  border-radius: 0.35rem;
+  background: var(--gnn-surface-alt);
+}
+
+.md-typeset .gnn-legend {
+  padding: 0 0.3rem;
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--gnn-muted);
+}
+
+.md-typeset .gnn-radios,
+.md-typeset .gnn-btnbar,
+.md-typeset .gnn-slider {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.7rem;
+}
+
+.md-typeset .gnn-radio {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
+  font-size: 0.7rem;
+  cursor: pointer;
+}
+
+.md-typeset .gnn-radio input {
+  margin: 0;
+  accent-color: var(--gnn-focus-stroke);
+}
+
+.md-typeset .gnn-btn {
+  padding: 0.28rem 0.6rem;
+  font: inherit;
+  font-size: 0.68rem;
+  color: var(--gnn-text);
+  background: var(--gnn-idle-fill);
+  border: 1px solid var(--gnn-border);
+  border-radius: 0.3rem;
+  cursor: pointer;
+}
+
+.md-typeset .gnn-btn:hover:not(:disabled) {
+  border-color: var(--gnn-focus-stroke);
+}
+
+.md-typeset .gnn-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* 선택된 단계는 색 외에 굵은 글씨 + 굵은 테두리로도 구분한다. */
+.md-typeset .gnn-btn[aria-pressed="true"] {
+  font-weight: 700;
+  color: var(--gnn-focus-text);
+  background: var(--gnn-focus-fill);
+  border: 2px solid var(--gnn-focus-stroke);
+  padding: calc(0.28rem - 1px) calc(0.6rem - 1px);
+}
+
+.md-typeset .gnn-slider input[type="range"] {
+  flex: 1 1 10rem;
+  min-width: 8rem;
+  accent-color: var(--gnn-focus-stroke);
+}
+
+.md-typeset .gnn-slider label {
+  font-size: 0.7rem;
+}
+
+.md-typeset .gnn-out {
+  min-width: 1.4rem;
+  padding: 0.05rem 0.35rem;
+  font-weight: 700;
+  font-size: 0.72rem;
+  text-align: center;
+  border: 1px solid var(--gnn-border);
+  border-radius: 0.25rem;
+  background: var(--gnn-idle-fill);
+}
+
+.md-typeset .gnn-viz :is(input, button):focus-visible {
+  outline: 2px solid var(--gnn-focus-stroke);
+  outline-offset: 2px;
+}
+
+/* ── 그림 ── */
+
+.md-typeset .gnn-viz__stage {
+  overflow-x: auto;
+}
+
+.md-typeset .gnn-viz__stage svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-width: 18rem;
+}
+
+.gnn-edge {
+  stroke: var(--gnn-line);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.gnn-edge--off {
+  stroke: var(--gnn-line-off);
+  stroke-dasharray: 5 5;
+}
+
+.gnn-edge--on {
+  stroke: var(--gnn-line);
+  stroke-width: 3.5;
+}
+
+.gnn-edge--w {
+  stroke: var(--gnn-active-stroke);
+  stroke-linecap: round;
+}
+
+.gnn-arrow {
+  stroke: var(--gnn-focus-stroke);
+  stroke-width: 2.5;
+  fill: none;
+}
+
+.gnn-node circle {
+  stroke-width: 2.5;
+  fill: var(--gnn-idle-fill);
+  stroke: var(--gnn-idle-stroke);
+  transition: fill 160ms ease, stroke 160ms ease;
+}
+
+.gnn-node--focus circle {
+  fill: var(--gnn-focus-fill);
+  stroke: var(--gnn-focus-stroke);
+  stroke-width: 4;
+}
+
+.gnn-node--active circle {
+  fill: var(--gnn-active-fill);
+  stroke: var(--gnn-active-stroke);
+  stroke-width: 3;
+}
+
+/* 수용 영역 밖 정점은 점선 테두리로도 구분된다. */
+.gnn-node--out circle {
+  stroke-dasharray: 4 4;
+  stroke-width: 2;
+}
+
+.gnn-node__val {
+  font-size: 15px;
+  font-weight: 700;
+  fill: var(--gnn-idle-text);
+}
+
+.gnn-node--focus .gnn-node__val { fill: var(--gnn-focus-text); }
+.gnn-node--active .gnn-node__val { fill: var(--gnn-active-text); }
+
+.gnn-node__name {
+  font-size: 11px;
+  fill: var(--gnn-muted);
+}
+
+.gnn-node__mark {
+  font-size: 13px;
+  font-weight: 700;
+  fill: var(--gnn-muted);
+}
+
+.gnn-node--focus .gnn-node__mark,
+.gnn-node--active .gnn-node__mark {
+  fill: var(--gnn-active-stroke);
+}
+
+.gnn-msgtag rect,
+.gnn-wtag rect,
+.gnn-badge rect {
+  fill: var(--gnn-surface);
+  stroke: var(--gnn-border);
+  stroke-width: 1;
+}
+
+.gnn-msgtag text,
+.gnn-wtag text,
+.gnn-badge text {
+  font-size: 11.5px;
+  font-weight: 600;
+  fill: var(--gnn-text);
+}
+
+.gnn-badge rect {
+  stroke: var(--gnn-focus-stroke);
+  stroke-width: 2;
+  fill: var(--gnn-focus-fill);
+}
+
+.gnn-badge text { fill: var(--gnn-focus-text); }
+
+.gnn-wtag rect {
+  stroke: var(--gnn-active-stroke);
+  fill: var(--gnn-surface);
+}
+
+/* ── 출력·수식 패널 ── */
+
+.md-typeset .gnn-viz__readout {
+  margin-top: 0.8rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--gnn-border);
+  border-radius: 0.35rem;
+  background: var(--gnn-surface-alt);
+}
+
+.md-typeset .gnn-eq__step {
+  margin: 0 0 0.4rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1.6;
+}
+
+.md-typeset .gnn-eq__row {
+  margin: 0.15rem 0;
+  font-family: var(--md-code-font);
+  font-size: 0.72rem;
+  line-height: 1.75;
+}
+
+/* 숫자는 색이 아니라 굵기·밑줄·테두리로 강조한다. */
+.md-typeset .gnn-num {
+  font-weight: 700;
+  padding: 0 0.2em;
+  border: 1px solid var(--gnn-focus-stroke);
+  border-radius: 0.2rem;
+  background: var(--gnn-focus-fill);
+  color: var(--gnn-focus-text);
+}
+
+.md-typeset .gnn-note {
+  margin: 0.5rem 0 0;
+  font-size: 0.66rem;
+  line-height: 1.6;
+  color: var(--gnn-muted);
+}
+
+.md-typeset .gnn-table {
+  width: 100%;
+  margin: 0.5rem 0 0;
+  border-collapse: collapse;
+  font-size: 0.66rem;
+}
+
+.md-typeset .gnn-table :is(th, td) {
+  padding: 0.25rem 0.4rem;
+  border: 1px solid var(--gnn-border);
+  text-align: right;
+}
+
+.md-typeset .gnn-table thead th,
+.md-typeset .gnn-table tbody th {
+  text-align: left;
+  background: var(--gnn-surface);
+}
+
+.md-typeset .gnn-dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.15rem 0.7rem;
+  margin: 0.4rem 0 0;
+  font-size: 0.68rem;
+}
+
+.md-typeset .gnn-dl dt {
+  font-weight: 700;
+  color: var(--gnn-muted);
+}
+
+.md-typeset .gnn-dl dd { margin: 0; }
+
+/* 스크린 리더 전용 요약 (시각적으로는 그림·표가 같은 내용을 전달한다) */
+.md-typeset .gnn-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media screen and (max-width: 36rem) {
+  .md-typeset .gnn-fieldset { flex: 1 1 100%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gnn-node circle,
+  .md-typeset .gnn-viz * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
