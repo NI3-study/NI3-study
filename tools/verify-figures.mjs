@@ -285,8 +285,8 @@ nearArr('Â 행 합은 1이 아니다', rowSum(G4.Ahat),
 ok('Â 행 합 ≠ 1', rowSum(G4.Ahat).every((v) => Math.abs(v - 1) > 0.05));
 
 const x4 = [1, 2, 3, 4];
-nearArr('AX = (5,5,1,2)  [01 §7]', flat(mul(G4.A, colOf(x4))), [5, 5, 1, 2]);
-nearArr('(A+I)X = (6,7,4,6)  [01 §5.4·§7]', flat(mul(G4.At, colOf(x4))), [6, 7, 4, 6]);
+nearArr('AX = (5,5,1,2)  [01 §8]', flat(mul(G4.A, colOf(x4))), [5, 5, 1, 2]);
+nearArr('(A+I)X = (6,7,4,6)  [01 §5.4·§8]', flat(mul(G4.At, colOf(x4))), [6, 7, 4, 6]);
 nearArr('ÂX ≈ (2.2247, 2.6330, 1.9082, 2.8165)  [02 §6]',
   flat(mul(G4.Ahat, colOf(x4))), [2.2247, 2.6330, 1.9082, 2.8165], 1e-3);
 nearArr('ReLU(ÂXW), W=[2] ≈ (4.4495, 5.2660, 3.8165, 5.6330)  [02 §6]',
@@ -578,7 +578,9 @@ ok('라벨 없는 v₃을 빼면 2-hop 밖의 v₄ 예측도 바뀐다',
 
 section('명세 규약');
 const ALL = Object.keys(NI3.figures);
-ok('그림 9개가 등록되어 있다', ALL.length === 9, ALL.join(', '));
+// 8개다. 계보 스트립은 한 자리에만 선다 — 같은 여섯 프레임을 두 문서에서
+// 다시 그리던 lineage-bridge는 삭제했다.
+ok('그림 8개가 등록되어 있다', ALL.length === 8, ALL.join(', '));
 let controls = 0;
 for (const id of ALL) {
   const spec = site(id);
@@ -592,7 +594,7 @@ for (const id of ALL) {
     new Set(fr.filter((f) => f.span !== 'full').map((f) => f.vb.join(','))).size <= 1);
   if (spec.variant) controls++;
 }
-ok('컨트롤이 있는 그림은 계보 스트립 둘뿐 (그 외 0개)', controls === 2, `got ${controls}`);
+ok('컨트롤이 있는 그림은 계보 스트립 하나뿐 (그 외 0개)', controls === 1, `got ${controls}`);
 ok('타이머·자동재생 API를 쓰지 않는다',
   ['registry.js', 'primitives.js', 'figures.js', 'mount.js'].every((f) => {
     const src = readFileSync(join(ROOT, 'docs/javascripts/gnn', f), 'utf8');
@@ -712,6 +714,125 @@ ok('슬롯마다 무JS 폴백이 하나씩', fbs.length === slots.length,
   `slots ${slots.length}, fallbacks ${fbs.length}`);
 ok('렌더 성공 뒤에만 폴백을 감춘다',
   /렌더가 성공한 뒤에만/.test(readFileSync(join(ROOT, 'docs/javascripts/gnn/mount.js'), 'utf8')));
+
+/* ══ 9b. 학습 경로의 구조 ══════════════════════════════
+ *
+ * 사실 오류가 아니라 순서와 정신모형의 파손을 잡는다. 여기 걸리는 것들은
+ * "정확하지만 원문을 읽는 편이 빠른 상태"를 만들던 것들이다.
+ */
+
+section('학습 경로의 구조');
+
+// (1) graph-in / graph-out 이 블록의 정의로 존재하는가.
+ok('01에 graph-in/graph-out 정의 절이 있다', /\{ #graph-in-graph-out \}/.test(D.d01));
+ok('01이 속성과 정점·간선 집합 기호를 구분해 graph-in/out을 쓴다',
+  /\(X,E_f,u;\\,A\)\\;\\longmapsto\\;\(X',E_f',u';\\,A\)/.test(D.d01) &&
+  /\$V,E\$는 정점·간선 \*\*집합\*\*/.test(D.d01));
+ok('01이 연결 구조가 상수임을 말한다', /연결 구조는 출력이 아니라 상수/.test(D.d01));
+ok('01이 MLP 대비 새 연산이 하나임을 말한다',
+  /\{ #mlp-to-gnn \}/.test(D.d01) && /순서 불변 집계 \$\\rho\$/.test(D.d01));
+ok('01이 고정 집계=GCN, 학습 집계=attention을 한 문장에 잇는다',
+  /고정된 가중합\*\*으로 두면 GCN이고, 그 계수를 \*\*학습\*\*하면 attention/.test(D.d01));
+
+// (2) head/readout 이 블록 정의 뒤에 온다. 순서가 뒤집히면 판정 1이 재발한다.
+const iBlock = D.d01.indexOf('{ #graph-in-graph-out }');
+const iHead = D.d01.indexOf('{ #head-readout }');
+ok('01에 head/readout 절이 있다', iHead > 0);
+ok('head 절이 블록 정의보다 뒤에 온다', iBlock > 0 && iHead > iBlock,
+  `block ${iBlock}, head ${iHead}`);
+ok('01이 예측 수준을 head의 차이로 설명한다',
+  /\*\*블록은 세 경우에 대해 모두 같다\.\*\*/.test(D.d01));
+
+// (3) Â의 정의가 계보 스트립 앞에 있어야 ④ 칸이 검산 가능해진다.
+const iAhat = D.d01.indexOf('{ #a-hat');
+const iStrip = D.d01.indexOf('data-gnn-fig="lineage-strip"');
+ok('01이 Â를 스스로 정의한다', iAhat > 0 && /\\hat A=\\tilde D\^\{-1\/2\}\\tilde A\\tilde D\^\{-1\/2\}/.test(D.d01));
+ok('Â 정의가 계보 스트립보다 앞에 있다', iAhat > 0 && iStrip > iAhat,
+  `Â ${iAhat}, strip ${iStrip}`);
+ok('01만 읽고 Â₁₃을 계산할 근거가 있다',
+  D.d01.includes('\\frac1{\\sqrt6}') && /\\tilde d=\(3,3,2,2\)/.test(D.d01));
+ok('01이 계보 ⑤의 두 행 일치를 랭크 1과 같은 투영값의 결합으로 설명한다',
+  /랭크 1/.test(D.d01) && /\(t,-t\)/.test(D.d01) &&
+  /랭크 1만으로 임의의 두 행이 같아지는 것은 아니다/.test(D.d01));
+
+// (4) 정의되지 않은 기호가 그림 안에 남아 있으면 안 된다.
+ok('01 §5.4 그림에 정의 없는 d̃ 라벨이 없다',
+  !/d̃/.test(frameText(site('state-transition'))));
+ok('01 §5.4 폴백도 d̃ 대신 셀 수 있는 말을 쓴다',
+  !/차수는 d̃/.test(D.d01) && /송신자 수는 \(3, 3, 2, 2\)/.test(D.d01));
+
+// (5) 렌더 파손 — 원시 LaTeX 노출.
+const FIG_SRC = readFileSync(join(ROOT, 'docs/javascripts/gnn/figures.js'), 'utf8');
+ok('JS가 주입하는 문자열에 $ 수식 구분자가 없다 (MathJax 대상 밖이다)',
+  !/'[^']*\$[A-Za-z(\\][^']*'/.test(FIG_SRC));
+for (const [name, src] of Object.entries(D)) {
+  const headings = src.split('\n').filter((l) => /^#{1,6} /.test(l));
+  ok(`${name}: 수식이 든 헤딩에 data-toc-label이 있다`,
+    headings.every((l) => !l.includes('$') || l.includes('data-toc-label')),
+    headings.filter((l) => l.includes('$') && !l.includes('data-toc-label')).join(' | '));
+}
+// 리스트 항목 안의 블록 수식은 4칸 들여써야 python-markdown이 리스트로 읽는다.
+ok('index 학습 목표의 블록 수식이 리스트 안에 붙어 있다',
+  /^\d\. GCN의 한 층\n\n {4}\$\$$/m.test(D.idx));
+
+// (6) 같은 그림을 두 문서에서 다시 그리지 않는다.
+ok('lineage-bridge 슬롯이 남아 있지 않다',
+  !Object.values(D).some((s) => s.includes('lineage-bridge')));
+ok('lineage-bridge 등록이 남아 있지 않다', !FIG_SRC.includes('lineage-bridge'));
+
+// (7) 읽기 순서 01 → 03 → 02 → 04.
+const NAVSRC = readFileSync(join(ROOT, 'mkdocs.yml'), 'utf8');
+const navOrder = (NAVSRC.match(/0\d_[a-z0-9_]+\.md/g) || []);
+ok('mkdocs nav 순서가 01 → 03 → 02 → 04',
+  navOrder.join(',') === '01_gnn_gentle_guide.md,03_bridge_mlp_to_gcn.md,' +
+    '02_kipf2017_gcn_guide.md,04_exercises.md', navOrder.join(','));
+const idxOrder = (D.idx.match(/0\d_[a-z0-9_]+\.md(?=\))/g) || []);
+const idxTable = idxOrder.slice(idxOrder.indexOf('01_gnn_gentle_guide.md'));
+ok('index 권장 순서표도 01 → 03 → 02 → 04',
+  /\| 1 \| \[01 /.test(D.idx) && /\| 2 \| \[03 /.test(D.idx) &&
+  /\| 3 \| \[02 /.test(D.idx) && /\| 4 \| \[04 /.test(D.idx), idxTable.join(','));
+ok('index 첫 화면에 GNN의 상이 한 문장으로 있다',
+  /\*\*GNN 블록은 그래프를 받아 같은 배선의 그래프를 돌려줍니다\.\*\*/.test(D.idx));
+ok('정전의 뜻이 첫 등장에 풀려 있다', /정전\(正典, canonical/.test(D.idx));
+
+// (8) 각 문서가 자기 역할을 머리에서 한 줄로 밝힌다.
+for (const [name, src] of Object.entries(D)) {
+  if (name === 'idx') continue;
+  ok(`${name}: 머리에 이 문서의 역할 한 줄이 있다`,
+    /^> \*\*이 문서(가|의)/m.test(src));
+}
+
+// (9) 03은 다리다. 01·02의 재방송이 아니라 Â의 구성이 단독 임무다.
+ok('03이 Â 구성 절을 갖는다', /\{ #build-operator \}/.test(D.d03));
+ok('03에서 중복 절이 빠졌다',
+  !/#unlabeled-nodes/.test(D.d03) && !/#transductive/.test(D.d03) &&
+  !/^## 확인문제$/m.test(D.d03));
+ok('03의 고유 내용은 남아 있다',
+  ['#weight-sharing', '#equivariance', '#receptive-field', '#edge-list', '#checklist']
+    .every((a) => D.d03.includes(a)));
+ok('03이 01·02보다 짧다', D.d03.length < D.d01.length && D.d03.length < D.d02.length,
+  `03 ${D.d03.length}, 01 ${D.d01.length}, 02 ${D.d02.length}`);
+
+// (10) 문서 간 링크가 살아 있는가 — 앵커까지 확인한다.
+const FILES = { 'index.md': D.idx, '01_gnn_gentle_guide.md': D.d01,
+  '02_kipf2017_gcn_guide.md': D.d02, '03_bridge_mlp_to_gcn.md': D.d03,
+  '04_exercises.md': D.d04 };
+function anchorsOf(src) {
+  const set = new Set();
+  for (const m of src.matchAll(/\{ *#([a-z0-9-]+)/g)) set.add(m[1]);
+  for (const m of src.matchAll(/data-gnn-fig="([a-z0-9-]+)"/g)) set.add(m[1]);
+  return set;
+}
+const ANCH = Object.fromEntries(
+  Object.entries(FILES).map(([f, s]) => [f, anchorsOf(s)]));
+let dead = [];
+for (const [f, src] of Object.entries(FILES)) {
+  for (const m of src.matchAll(/\]\(([0-9a-z_]*\.md)?#([a-z0-9-]+)\)/g)) {
+    const target = m[1] || f;
+    if (!ANCH[target] || !ANCH[target].has(m[2])) dead.push(`${f} → ${target}#${m[2]}`);
+  }
+}
+ok('문서 간 앵커 링크에 끊어진 것이 없다', dead.length === 0, dead.join(' | '));
 
 // 일정·역할·타임박스는 남아 있으면 안 된다.
 const noMeeting = ['00_meeting', '진행표', '역할 회전', '체크포인트', '산출물 템플릿', '진행자 노트'];

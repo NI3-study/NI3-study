@@ -203,11 +203,12 @@
       title: '① H' + SL + ' — 층 l의 입력 상태',
       desc: '층 l의 입력 상태 H' + SL + '다. 원반 안 숫자와 격자의 한 열이 같은 값이고 ' +
             g.nodes.map(function (id, i) { return 'v' + id + '는 ' + h[i]; }).join(', ') +
-            ' 다. 차수는 d̃ = (' + o.dt.join(', ') + ') 이므로 내부 정점 v' + inner +
-            '과 잎 정점 v' + leaf + '이 서로 다른 난도의 두 예시가 된다. ' +
+            ' 다. 자기 자신을 포함한 송신자 수는 (' + o.dt.join(', ') + ') 이므로 ' +
+            '내부 정점 v' + inner + '과 잎 정점 v' + leaf +
+            '이 서로 다른 난도의 두 예시가 된다. ' +
             '이 상태는 메시지를 만드는 동안 지워지지 않는다.',
       caption: '① 입력 상태 H' + SL + ' — 행 = 정점. 이 값은 메시지를 만드는 동안 지워지지 않고, ' +
-               '자기 자신도 송신자의 하나로 들어간다. 차수가 다른 두 정점(v' + sub(inner) +
+               '자기 자신도 송신자의 하나로 들어간다. 송신자 수가 다른 두 정점(v' + sub(inner) +
                ', v' + sub(leaf) + ')이 아래 두 예시다.',
       draw: function (root, api) {
         heading(root, api, '① H' + SL + ' — 층 l의 입력 상태', 12, 16);
@@ -215,7 +216,9 @@
         var vals = {}, names = {}, roles = {};
         g.nodes.forEach(function (id, i) {
           vals[id] = String(h[i]);
-          names[id] = 'v' + id + ' d̃' + o.dt[i];
+          // 이 그림은 Â가 정의되기 전에 선다. 아직 뜻이 없는 d̃ 대신
+          // 그림 안에서 셀 수 있는 양(자기 포함 송신자 수)으로 적는다.
+          names[id] = 'v' + id;
           roles[id] = (id === inner || id === leaf) ? 'focus' : 'active';
         });
         api.drawGraph(gg, {
@@ -226,8 +229,9 @@
           nums: colMat(h), text: colMat(h).map(function (r) { return [String(r[0])]; }),
           rowLabels: rowLabelsOf(g), heading: 'H' + SL
         });
-        note(root, api, '아래 두 예시가 될 정점', 272, 166);
-        note(root, api, '— 내부 v' + sub(inner) + ' · 잎 v' + sub(leaf), 272, 178);
+        note(root, api, '아래 두 예시 — 자기 포함 송신자 수', 240, 166);
+        note(root, api, '내부 v' + sub(inner) + ': ' + o.dt[g.nodes.indexOf(inner)] +
+          ' · 잎 v' + sub(leaf) + ': ' + o.dt[g.nodes.indexOf(leaf)], 240, 178);
       }
     });
 
@@ -465,7 +469,8 @@
 
   /* ══════════════════════════════════════════════════════════
    * F2. 계보 스트립 X → AX → (A+I)X → ÂX → ÂXW → σ
-   *     01 §7 (#viz-lineage) 와 03 §5 (#viz-lineage-bridge)에 함께 선다.
+   *     01 §8 (#viz-lineage) 한 자리에만 선다. 같은 여섯 프레임을
+   *     03에서 다시 그리지 않는다 — 계보는 자라야지 반복되면 안 된다.
    * ════════════════════════════════════════════════════════ */
 
   var LIN = { gx: 64, gy: 42, cw: 34, ch: 22 };
@@ -521,7 +526,7 @@
     return box;
   }
 
-  function figLineage(where) {
+  function figLineage() {
     var g = G.G4, o = gr.ops(g);
     var X = gr.featureX(g);
     var W = [[1, -1], [-1, 1]];
@@ -648,16 +653,12 @@
     }
 
     return {
-      id: where === 'bridge' ? 'lineage-bridge' : 'lineage-strip',
+      id: 'lineage-strip',
       title: '한 층 안의 여섯 칸 — H' + SL + '에서 H' + SL1 + '까지',
       badge: '2채널판 X = H' + SL + ', W = [[1, −1], [−1, 1]]',
-      caption: (where === 'bridge'
-        ? '03의 §1–§5는 이 여섯 프레임이다. 정점 좌표도 행 순서도 바뀌지 않고 ' +
-          '격자 안의 숫자만 바뀐다. 왼쪽 연산자는 세로(정점 축)를, 오른쪽 W는 ' +
-          '가로(특성 축)를 섞는다.'
-        : '01의 손계산 $AX$, $(A+I)X$를 그대로 이어받아 Â, W, σ까지 간다. ' +
-          '02 §6과 04 문제 4의 숫자가 여기 ④–⑤ 프레임에 그대로 있다. ' +
-          '첫 열 W = [1, −1]ᵀ가 04 문제 4의 W다.') +
+      caption: '바로 위 손계산의 연산 순서를 이어받되, W의 특성 축 변환을 보이기 위해 X를 2채널로 바꾸어 Â, W, σ까지 간다. ' +
+        '02 §6과 04 문제 4의 숫자가 여기 ④–⑤ 프레임에 그대로 있다. ' +
+        '첫 열 W = [1, −1]ᵀ가 04 문제 4의 W다.' +
         ' 여섯 칸은 층 여섯 개가 아니라 층 하나 안의 하위 단계다 — 집계(②–④)는 ' +
         '그중 한 단계이고, ①이 H' + SL + ', ⑥이 H' + SL1 + '이며 마지막 칸의 ' +
         '되먹임 화살이 그 출력을 다음 층의 ① 자리로 돌려보낸다.',
@@ -831,7 +832,7 @@
   }
 
   /* ══════════════════════════════════════════════════════════
-   * F4. 수용 집합 vs 영향력 — 03 §8 (#receptive-field)
+   * F4. 수용 집합 vs 영향력 — 03 §6 (#receptive-field)
    * ════════════════════════════════════════════════════════ */
 
   function figDepth() {
@@ -1482,8 +1483,7 @@
   NI3.figures = {
     'state-transition': figStateTransition,
     'aggregate-collide': figAggregate,
-    'lineage-strip': function () { return figLineage('intro'); },
-    'lineage-bridge': function () { return figLineage('bridge'); },
+    'lineage-strip': figLineage,
     'norm-3up': figNorm,
     'depth-frames': figDepth,
     'oversmoothing': figConverge,

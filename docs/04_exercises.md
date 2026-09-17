@@ -1,8 +1,10 @@
 # GNN/GCN 손계산과 토론 문제
 
+> **이 문서가 하는 일** — 새 개념을 정의하지 않는다. 앞의 세 문서(01 → 03 → 02)가 만든 숫자를 손으로 다시 계산하고, 설계 토론으로 넘어간다. 읽는 순서는 이 문서가 마지막이다.
+
 앞의 세 문서에 나온 숫자를 직접 다시 계산해 보는 문제 8개다. 해설은 아래에 함께 있으니, 막히면 바로 보지 말고 먼저 손으로 한 줄이라도 써 보는 편이 낫다. 계산기는 $\sqrt6\approx2.449$, $1/\sqrt6\approx0.408$ 정도만 있으면 된다.
 
-문제 1~5는 [01 §7](01_gnn_gentle_guide.md#ax-hand-calc)·[02 §6](02_kipf2017_gcn_guide.md#hand-calc)과 같은 그래프·같은 숫자를 쓴다. 문제 4의 결과는 [계보 스트립](01_gnn_gentle_guide.md#viz-lineage)의 다섯 번째 프레임 첫 열과 같고, 문제 7은 [수용 집합과 영향력](03_bridge_mlp_to_gcn.md#receptive-field) 그림의 네 프레임과 같은 계산이다.
+문제 1~5는 [01 §8](01_gnn_gentle_guide.md#ax-hand-calc)·[02 §6](02_kipf2017_gcn_guide.md#hand-calc)과 같은 그래프·같은 숫자를 쓴다. 문제 4의 결과는 [계보 스트립](01_gnn_gentle_guide.md#viz-lineage)의 다섯 번째 프레임 첫 열과 같고, 문제 7은 [03 §6 수용 집합과 영향력](03_bridge_mlp_to_gcn.md#receptive-field) 그림의 네 프레임과 같은 계산이다.
 
 ---
 
@@ -262,7 +264,7 @@ $$
 \approx(0.329,\ 0.159,\ 0.347,\ 0.056).
 $$
 
-순위는 $v_3>v_1>v_2>v_4$이고, 3-hop인 $v_4$의 기여 $1/18\approx0.056$은 $v_3$ 자신의 6분의 1에 못 미친다. **수용 집합에 들어오는 것과 영향을 주는 것은 다른 양이다.** 같은 계산을 그림으로 본 것이 [03 §8](03_bridge_mlp_to_gcn.md#receptive-field)이다.
+순위는 $v_3>v_1>v_2>v_4$이고, 3-hop인 $v_4$의 기여 $1/18\approx0.056$은 $v_3$ 자신의 6분의 1에 못 미친다. **수용 집합에 들어오는 것과 영향을 주는 것은 다른 양이다.** 같은 계산을 그림으로 본 것이 [03 §6](03_bridge_mlp_to_gcn.md#receptive-field)이다.
 
 깊은 모델의 문제 예시는 표현의 과도한 혼합(오버스무딩), gradient/최적화 어려움, 과적합, 계산·메모리 증가, 이웃 폭발, 병목 간선에 의한 압축(oversquashing)이다. residual connection은 이전 층 표현과 gradient 경로를 보존해 깊은 변환을 최적화하기 쉽게 할 수 있다.
 
