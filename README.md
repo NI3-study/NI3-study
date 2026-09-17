@@ -1,5 +1,11 @@
 # NI3-study: MLP에서 GNN/GCN까지
 
+## 바로가기
+
+- **[공개 스터디 사이트 열기](https://ni3-study.github.io/NI3-study/)**
+- **[2026-09-17 Foundation 01 미팅 페이지 열기](https://ni3-study.github.io/NI3-study/00_meeting_2026-09-17/)**
+- [GitHub에서 학습 자료 원본 보기](docs/)
+
 > 이 저장소는 MkDocs Material과 GitHub Pages로 공개할 수 있도록 구성되어 있다. 공개 사이트의 시작 문서는 `docs/index.md`이며, `main` 브랜치에 push하면 GitHub Actions가 사이트를 빌드한다.
 
 NI3 내부 기초 스터디를 위한 한국어 학습 자료다. 독자는 다음 내용을 안다고 가정한다.
