@@ -23,9 +23,13 @@
 }
 
 /* ─────────────────────────────────────────────────────────────
-   GNN 인터랙티브 시각화 (docs/javascripts/gnn-visuals.js)
-   색상은 모두 변수로만 지정해 라이트/다크 테마를 함께 지원한다.
-   정보는 색 외에 숫자·기호·선 굵기·점선으로도 중복 인코딩한다.
+   GNN 시각 계보 (docs/javascripts/gnn/*.js)
+
+   - 색은 정체성이 아니라 역할이다. 색 단독 인코딩은 쓰지 않는다
+     (숫자·기호·선 굵기·점선·빗금을 함께 쓴다).
+   - 모든 색은 변수로만 지정해 라이트/다크 테마를 함께 지원한다.
+   - 타이머·자동 재생·전환 루프는 없다. 상태는 사용자 조작에만 반응한다.
+   - 순서는 시간이 아니라 공간이다. 넓은 화면은 좌→우, 좁은 화면은 위→아래.
    ───────────────────────────────────────────────────────────── */
 
 :root {
@@ -45,9 +49,21 @@
   --gnn-active-fill: #ddedf3;
   --gnn-active-text: #0c3f52;
 
+  /* 격자 농도 채움은 테마마다 따로 정한다. 칸 글자는 어느 테마에서나
+     --gnn-text 한 색이므로, 최대 농도(0.82)에서 글자 대비가 4.5:1 아래로
+     떨어지지 않는 쪽으로 채움을 밀어야 한다. */
+  --gnn-cell-fill: #5f9db4;
+
   --gnn-idle-stroke: #8b9099;
   --gnn-idle-fill: #ffffff;
   --gnn-idle-text: #40444a;
+
+  --gnn-label-stroke: #6a4a12;
+  --gnn-label-fill: #f6ecd6;
+
+  --gnn-block-stroke: #3f4f2f;
+  --gnn-block-fill: #e7efdf;
+  --gnn-block-text: #2c3a20;
 }
 
 [data-md-color-scheme="slate"] {
@@ -67,51 +83,135 @@
   --gnn-active-fill: #17343d;
   --gnn-active-text: #cdeef8;
 
+  /* 다크에서 --gnn-active-stroke를 그대로 쓰면 농도가 높은 칸이 밝아져
+     밝은 글자와 대비가 2:1 아래로 떨어진다. 어두운 쪽으로 채운다. */
+  --gnn-cell-fill: #2b6076;
+
   --gnn-idle-stroke: #767d88;
   --gnn-idle-fill: #2a2e36;
   --gnn-idle-text: #c6cad0;
+
+  --gnn-label-stroke: #e8c877;
+  --gnn-label-fill: #3c3219;
+
+  --gnn-block-stroke: #b9d69a;
+  --gnn-block-fill: #2a3324;
+  --gnn-block-text: #dcebcd;
 }
 
-.md-typeset .gnn-viz {
+/* ── 슬롯과 무JS 폴백 ───────────────────────────────────── */
+
+.md-typeset .gnn-fig-slot {
   margin: 1.6em 0;
-  padding: 0.9rem 0.95rem 1rem;
+}
+
+.md-typeset .gnn-fallback {
+  margin: 0;
+  padding: 0.7rem 0.85rem;
+  font-size: 0.7rem;
+  line-height: 1.7;
+  color: var(--gnn-muted);
+  border: 1px dashed var(--gnn-border);
+  border-radius: 0.4rem;
+  background: var(--gnn-surface-alt);
+}
+
+.md-typeset .gnn-fallback[hidden] {
+  display: none;
+}
+
+/* ── 그림 셸 ────────────────────────────────────────────── */
+
+.md-typeset .gnn-fig {
+  margin: 0;
+  padding: 0.85rem 0.9rem 0.9rem;
   border: 1px solid var(--gnn-border);
   border-radius: 0.5rem;
   background: var(--gnn-surface);
   color: var(--gnn-text);
 }
 
-.md-typeset .gnn-viz__head {
-  margin-bottom: 0.7rem;
+.md-typeset .gnn-fig__frames {
+  display: grid;
+  gap: 0.75rem 0.7rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, var(--gnn-min, 16rem)), 1fr));
+  align-items: start;
 }
 
-.md-typeset .gnn-viz__title {
-  margin: 0 0 0.25rem;
-  font-size: 0.82rem;
-  line-height: 1.4;
+.md-typeset .gnn-frame {
+  min-width: 0;
+  padding: 0.45rem 0.5rem 0.5rem;
+  border: 1px solid var(--gnn-border);
+  border-radius: 0.35rem;
+  background: var(--gnn-surface-alt);
 }
 
-.md-typeset .gnn-viz__desc {
-  margin: 0;
-  font-size: 0.68rem;
+.md-typeset .gnn-frame--full {
+  grid-column: 1 / -1;
+}
+
+.md-typeset .gnn-frame__stage svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.md-typeset .gnn-frame__cap {
+  margin: 0.4rem 0 0;
+  font-size: 0.66rem;
   line-height: 1.6;
+  color: var(--gnn-text);
+}
+
+/* ── figcaption ─────────────────────────────────────────── */
+
+.md-typeset .gnn-fig__cap {
+  margin: 0.75rem 0 0;
+  font-size: 0.7rem;
+  line-height: 1.75;
+  color: var(--gnn-text);
+  text-align: left;
+}
+
+.md-typeset .gnn-fig__badge {
+  display: inline-block;
+  margin-right: 0.4rem;
+  padding: 0.05rem 0.4rem;
+  font-size: 0.6rem;
+  font-weight: 700;
+  color: var(--gnn-active-text);
+  background: var(--gnn-active-fill);
+  border: 1px solid var(--gnn-active-stroke);
+  border-radius: 0.25rem;
+}
+
+.md-typeset .gnn-fig__lead {
   color: var(--gnn-muted);
 }
 
-/* ── 조작부 ── */
+.md-typeset .gnn-fig__falsify {
+  display: block;
+  margin-top: 0.35rem;
+  padding-left: 0.5rem;
+  font-size: 0.66rem;
+  border-left: 3px solid var(--gnn-focus-stroke);
+  color: var(--gnn-muted);
+}
 
-.md-typeset .gnn-viz__controls {
+/* ── 조작부 (사이트 전체에 컨트롤은 하나뿐이다) ────────── */
+
+.md-typeset .gnn-fig__controls {
   display: flex;
   flex-wrap: wrap;
   gap: 0.6rem;
-  margin-bottom: 0.8rem;
+  margin-bottom: 0.7rem;
 }
 
 .md-typeset .gnn-fieldset {
-  flex: 1 1 15rem;
+  flex: 1 1 18rem;
   min-width: 0;
   margin: 0;
-  padding: 0.45rem 0.6rem 0.6rem;
+  padding: 0.45rem 0.6rem 0.55rem;
   border: 1px solid var(--gnn-border);
   border-radius: 0.35rem;
   background: var(--gnn-surface-alt);
@@ -125,95 +225,42 @@
   color: var(--gnn-muted);
 }
 
-.md-typeset .gnn-radios,
-.md-typeset .gnn-btnbar,
-.md-typeset .gnn-slider {
+.md-typeset .gnn-radios {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.35rem 0.7rem;
+  gap: 0.35rem 0.9rem;
 }
 
 .md-typeset .gnn-radio {
   display: inline-flex;
   align-items: center;
-  gap: 0.28rem;
+  gap: 0.3rem;
+  min-height: 2.75rem;
   font-size: 0.7rem;
   cursor: pointer;
 }
 
 .md-typeset .gnn-radio input {
+  width: 1rem;
+  height: 1rem;
   margin: 0;
   accent-color: var(--gnn-focus-stroke);
 }
 
-.md-typeset .gnn-btn {
-  padding: 0.28rem 0.6rem;
-  font: inherit;
-  font-size: 0.68rem;
-  color: var(--gnn-text);
-  background: var(--gnn-idle-fill);
-  border: 1px solid var(--gnn-border);
-  border-radius: 0.3rem;
-  cursor: pointer;
+.md-typeset .gnn-fieldset__note {
+  margin: 0.3rem 0 0;
+  font-size: 0.62rem;
+  line-height: 1.6;
+  color: var(--gnn-muted);
 }
 
-.md-typeset .gnn-btn:hover:not(:disabled) {
-  border-color: var(--gnn-focus-stroke);
-}
-
-.md-typeset .gnn-btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-/* 선택된 단계는 색 외에 굵은 글씨 + 굵은 테두리로도 구분한다. */
-.md-typeset .gnn-btn[aria-pressed="true"] {
-  font-weight: 700;
-  color: var(--gnn-focus-text);
-  background: var(--gnn-focus-fill);
-  border: 2px solid var(--gnn-focus-stroke);
-  padding: calc(0.28rem - 1px) calc(0.6rem - 1px);
-}
-
-.md-typeset .gnn-slider input[type="range"] {
-  flex: 1 1 10rem;
-  min-width: 8rem;
-  accent-color: var(--gnn-focus-stroke);
-}
-
-.md-typeset .gnn-slider label {
-  font-size: 0.7rem;
-}
-
-.md-typeset .gnn-out {
-  min-width: 1.4rem;
-  padding: 0.05rem 0.35rem;
-  font-weight: 700;
-  font-size: 0.72rem;
-  text-align: center;
-  border: 1px solid var(--gnn-border);
-  border-radius: 0.25rem;
-  background: var(--gnn-idle-fill);
-}
-
-.md-typeset .gnn-viz :is(input, button):focus-visible {
+.md-typeset .gnn-fig :is(input, button):focus-visible {
   outline: 2px solid var(--gnn-focus-stroke);
   outline-offset: 2px;
 }
 
-/* ── 그림 ── */
-
-.md-typeset .gnn-viz__stage {
-  overflow-x: auto;
-}
-
-.md-typeset .gnn-viz__stage svg {
-  display: block;
-  width: 100%;
-  height: auto;
-  min-width: 18rem;
-}
+/* ── 원반 표면 ──────────────────────────────────────────── */
 
 .gnn-edge {
   stroke: var(--gnn-line);
@@ -223,12 +270,11 @@
 
 .gnn-edge--off {
   stroke: var(--gnn-line-off);
-  stroke-dasharray: 5 5;
+  stroke-dasharray: 5 4;
 }
 
 .gnn-edge--on {
   stroke: var(--gnn-line);
-  stroke-width: 3.5;
 }
 
 .gnn-edge--w {
@@ -236,167 +282,274 @@
   stroke-linecap: round;
 }
 
+/* 병목 간선은 색이 아니라 이중선 느낌의 굵기 + 점찍기로 구분한다. */
+.gnn-edge--bottleneck {
+  stroke: var(--gnn-focus-stroke);
+  stroke-width: 4;
+  stroke-dasharray: 1 5;
+  stroke-linecap: round;
+}
+
 .gnn-arrow {
   stroke: var(--gnn-focus-stroke);
-  stroke-width: 2.5;
+  stroke-width: 2.2;
   fill: none;
 }
 
+.gnn-arrow--dim {
+  stroke: var(--gnn-line-off);
+  stroke-width: 1.4;
+}
+
 .gnn-node circle {
-  stroke-width: 2.5;
+  stroke-width: 2.4;
   fill: var(--gnn-idle-fill);
   stroke: var(--gnn-idle-stroke);
-  transition: fill 160ms ease, stroke 160ms ease;
+  transition: fill 140ms ease, stroke 140ms ease;
 }
 
 .gnn-node--focus circle {
   fill: var(--gnn-focus-fill);
   stroke: var(--gnn-focus-stroke);
-  stroke-width: 4;
+  stroke-width: 3.8;
 }
 
 .gnn-node--active circle {
   fill: var(--gnn-active-fill);
   stroke: var(--gnn-active-stroke);
-  stroke-width: 3;
+  stroke-width: 2.8;
 }
 
-/* 수용 영역 밖 정점은 점선 테두리로도 구분된다. */
+.gnn-node--labeled circle {
+  fill: var(--gnn-label-fill);
+  stroke: var(--gnn-label-stroke);
+  stroke-width: 2.8;
+}
+
+.gnn-node__ring2 {
+  fill: none !important;
+  stroke: var(--gnn-label-stroke) !important;
+  stroke-width: 1.4 !important;
+}
+
+/* 집합 밖 정점은 점선 테두리로도 구분된다. */
 .gnn-node--out circle {
+  fill: var(--gnn-idle-fill);
+  stroke: var(--gnn-idle-stroke);
   stroke-dasharray: 4 4;
-  stroke-width: 2;
+  stroke-width: 1.8;
 }
 
 .gnn-node__val {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 700;
   fill: var(--gnn-idle-text);
 }
 
 .gnn-node--focus .gnn-node__val { fill: var(--gnn-focus-text); }
 .gnn-node--active .gnn-node__val { fill: var(--gnn-active-text); }
+.gnn-node--out .gnn-node__val { fill: var(--gnn-muted); }
 
 .gnn-node__name {
-  font-size: 11px;
+  font-size: 10.5px;
   fill: var(--gnn-muted);
 }
 
 .gnn-node__mark {
-  font-size: 13px;
+  font-size: 11px;
   font-weight: 700;
   fill: var(--gnn-muted);
 }
 
-.gnn-node--focus .gnn-node__mark,
-.gnn-node--active .gnn-node__mark {
-  fill: var(--gnn-active-stroke);
+.gnn-ring rect {
+  fill: none;
+  stroke: var(--gnn-focus-stroke);
+  stroke-width: 1.3;
+  stroke-dasharray: 7 4;
 }
 
-.gnn-msgtag rect,
-.gnn-wtag rect,
-.gnn-badge rect {
+.gnn-ring__label {
+  font-size: 10px;
+  font-weight: 700;
+  fill: var(--gnn-focus-stroke);
+}
+
+.gnn-tag rect {
   fill: var(--gnn-surface);
   stroke: var(--gnn-border);
   stroke-width: 1;
 }
 
-.gnn-msgtag text,
-.gnn-wtag text,
-.gnn-badge text {
-  font-size: 11.5px;
+.gnn-tag text {
+  font-size: 9.5px;
   font-weight: 600;
   fill: var(--gnn-text);
 }
 
-.gnn-badge rect {
+.gnn-tag--edge rect { stroke: var(--gnn-active-stroke); }
+.gnn-tag--msg rect { stroke: var(--gnn-focus-stroke); }
+.gnn-tag--dim rect { stroke: var(--gnn-border); }
+.gnn-tag--dim text { fill: var(--gnn-muted); }
+
+/* ── 격자 표면 ──────────────────────────────────────────── */
+
+.gnn-cell rect {
+  fill: var(--gnn-idle-fill);
+  stroke: var(--gnn-border);
+  stroke-width: 1;
+}
+
+.gnn-cell__fill {
+  fill: var(--gnn-cell-fill);
+  stroke: none !important;
+}
+
+.gnn-cell__neg {
+  stroke: none !important;
+}
+
+.gnn-hatch {
   stroke: var(--gnn-focus-stroke);
+  stroke-width: 1.1;
+}
+
+.gnn-cell__t {
+  font-size: 9.5px;
+  font-weight: 600;
+  fill: var(--gnn-text);
+}
+
+.gnn-cell--labeled rect { stroke: var(--gnn-label-stroke); stroke-width: 2.2; }
+.gnn-cell--focus rect { stroke: var(--gnn-focus-stroke); stroke-width: 2; }
+.gnn-cell--out rect { stroke-dasharray: 3 3; }
+.gnn-cell--out .gnn-cell__t { fill: var(--gnn-muted); }
+
+.gnn-grid__heading {
+  font-size: 11px;
+  font-weight: 700;
+  fill: var(--gnn-text);
+}
+
+.gnn-grid__axis {
+  font-size: 9.5px;
+  fill: var(--gnn-muted);
+}
+
+.gnn-grid__mark {
+  font-size: 9.5px;
+  font-weight: 700;
+  fill: var(--gnn-focus-stroke);
+}
+
+/* ── W 기둥 ─────────────────────────────────────────────── */
+
+.gnn-block rect {
+  fill: var(--gnn-block-fill);
+  stroke: var(--gnn-block-stroke);
   stroke-width: 2;
-  fill: var(--gnn-focus-fill);
 }
 
-.gnn-badge text { fill: var(--gnn-focus-text); }
+.gnn-block__t {
+  font-size: 12px;
+  font-weight: 700;
+  fill: var(--gnn-block-text);
+}
 
-.gnn-wtag rect {
+.gnn-block__sub {
+  font-size: 9px;
+  fill: var(--gnn-block-text);
+}
+
+.gnn-block--muted rect {
+  stroke-dasharray: 4 3;
+  stroke-width: 1.3;
+}
+
+/* ── S 축 ───────────────────────────────────────────────── */
+
+.gnn-axis__line {
+  stroke: var(--gnn-line);
+  stroke-width: 1.2;
+}
+
+.gnn-axis__rowlabel {
+  font-size: 9.5px;
+  font-weight: 700;
+  fill: var(--gnn-text);
+}
+
+.gnn-axis__mark {
+  fill: var(--gnn-active-fill);
   stroke: var(--gnn-active-stroke);
-  fill: var(--gnn-surface);
+  stroke-width: 1.6;
 }
 
-/* ── 출력·수식 패널 ── */
-
-.md-typeset .gnn-viz__readout {
-  margin-top: 0.8rem;
-  padding: 0.6rem 0.75rem;
-  border: 1px solid var(--gnn-border);
-  border-radius: 0.35rem;
-  background: var(--gnn-surface-alt);
+.gnn-axis__mlabel {
+  font-size: 9px;
+  fill: var(--gnn-muted);
 }
 
-.md-typeset .gnn-eq__step {
-  margin: 0 0 0.4rem;
-  font-size: 0.7rem;
+.gnn-axis__tick {
+  stroke: var(--gnn-line);
+  stroke-width: 1;
+}
+
+.gnn-axis__tlabel {
+  font-size: 9px;
+  fill: var(--gnn-muted);
+}
+
+.gnn-axis__caption {
+  font-size: 9.5px;
+  fill: var(--gnn-muted);
+}
+
+/* ── 축 흐름 표시 ───────────────────────────────────────── */
+
+.gnn-flow__line {
+  stroke: var(--gnn-focus-stroke);
+  stroke-width: 1.6;
+  fill: none;
+}
+
+.gnn-flow--feat .gnn-flow__line {
+  stroke: var(--gnn-block-stroke);
+}
+
+.gnn-flow__t {
+  font-size: 10px;
   font-weight: 700;
-  line-height: 1.6;
+  fill: var(--gnn-focus-stroke);
 }
 
-.md-typeset .gnn-eq__row {
-  margin: 0.15rem 0;
-  font-family: var(--md-code-font);
-  font-size: 0.72rem;
-  line-height: 1.75;
+.gnn-flow--feat .gnn-flow__t {
+  fill: var(--gnn-block-stroke);
 }
 
-/* 숫자는 색이 아니라 굵기·밑줄·테두리로 강조한다. */
-.md-typeset .gnn-num {
+/* ── 프레임 안의 글 ─────────────────────────────────────── */
+
+.gnn-frame__heading {
+  font-size: 11.5px;
   font-weight: 700;
-  padding: 0 0.2em;
-  border: 1px solid var(--gnn-focus-stroke);
-  border-radius: 0.2rem;
-  background: var(--gnn-focus-fill);
-  color: var(--gnn-focus-text);
+  fill: var(--gnn-text);
 }
 
-.md-typeset .gnn-note {
-  margin: 0.5rem 0 0;
-  font-size: 0.66rem;
-  line-height: 1.6;
-  color: var(--gnn-muted);
+.gnn-frame__note {
+  font-size: 9.5px;
+  fill: var(--gnn-muted);
 }
 
-.md-typeset .gnn-table {
-  width: 100%;
-  margin: 0.5rem 0 0;
-  border-collapse: collapse;
-  font-size: 0.66rem;
+.gnn-badge__k {
+  font-size: 10px;
+  fill: var(--gnn-text);
 }
 
-.md-typeset .gnn-table :is(th, td) {
-  padding: 0.25rem 0.4rem;
-  border: 1px solid var(--gnn-border);
-  text-align: right;
-}
-
-.md-typeset .gnn-table thead th,
-.md-typeset .gnn-table tbody th {
-  text-align: left;
-  background: var(--gnn-surface);
-}
-
-.md-typeset .gnn-dl {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 0.15rem 0.7rem;
-  margin: 0.4rem 0 0;
-  font-size: 0.68rem;
-}
-
-.md-typeset .gnn-dl dt {
+.gnn-badge__k--warn {
   font-weight: 700;
-  color: var(--gnn-muted);
+  fill: var(--gnn-focus-stroke);
 }
 
-.md-typeset .gnn-dl dd { margin: 0; }
-
-/* 스크린 리더 전용 요약 (시각적으로는 그림·표가 같은 내용을 전달한다) */
+/* 스크린 리더 전용 요약 (시각적으로는 캡션과 그림이 같은 내용을 전달한다) */
 .md-typeset .gnn-sr {
   position: absolute;
   width: 1px;
@@ -416,7 +569,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .gnn-node circle,
-  .md-typeset .gnn-viz * {
+  .md-typeset .gnn-fig * {
     transition: none !important;
     animation: none !important;
   }

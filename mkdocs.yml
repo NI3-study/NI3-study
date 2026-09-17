@@ -34,7 +34,6 @@ theme:
 
 nav:
   - 시작하기: index.md
-  - 0. 모임 진행 (2026-09-17): 00_meeting_2026-09-17.md
   - 1. GNN 입문: 01_gnn_gentle_guide.md
   - 2. GCN 논문 해설: 02_kipf2017_gcn_guide.md
   - 3. MLP에서 GCN까지: 03_bridge_mlp_to_gcn.md
@@ -58,7 +57,11 @@ markdown_extensions:
 extra_javascript:
   - javascripts/mathjax.js
   - https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js
-  - javascripts/gnn-visuals.js
+  # 시각 계보: L0 등록부 → L1 원시형 → L2 그림 명세 → L3 마운트. 순서가 의존이다.
+  - javascripts/gnn/registry.js
+  - javascripts/gnn/primitives.js
+  - javascripts/gnn/figures.js
+  - javascripts/gnn/mount.js
 
 extra_css:
   - stylesheets/extra.css
