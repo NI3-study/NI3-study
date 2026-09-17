@@ -51,7 +51,7 @@ G4가 원리적으로 담을 수 없는 현상(차수 격차, 이웃 증가, 병
 
 | 순서 | 주제 | 읽을 문서 | 그 문서의 그림 |
 |---|---|---|---|
-| 1 | 그래프 데이터와 GNN 직관 | [GNN 입문](01_gnn_gentle_guide.md) | [동기 갱신](01_gnn_gentle_guide.md#viz-message-passing) · [계보 스트립](01_gnn_gentle_guide.md#viz-lineage) |
+| 1 | 그래프 데이터와 GNN 직관 | [GNN 입문](01_gnn_gentle_guide.md) | [상태 전이](01_gnn_gentle_guide.md#viz-message-passing) · [집계기 충돌](01_gnn_gentle_guide.md#aggregation) · [계보 스트립](01_gnn_gentle_guide.md#viz-lineage) |
 | 2 | Kipf–Welling GCN | [GCN 논문 해설](02_kipf2017_gcn_guide.md) | [스펙트럼](02_kipf2017_gcn_guide.md#spectral) · [정규화 3지](02_kipf2017_gcn_guide.md#viz-normalization) · [라벨 마스크](02_kipf2017_gcn_guide.md#viz-semi-supervised) · [표현 수렴](02_kipf2017_gcn_guide.md#depth-appendix-b) |
 | 3 | MLP에서 GCN까지 | [연결 해설](03_bridge_mlp_to_gcn.md) | [계보 스트립 재등장](03_bridge_mlp_to_gcn.md#gcn-one-layer) · [수용 집합과 영향력](03_bridge_mlp_to_gcn.md#receptive-field) |
 | 4 | 손계산과 토론 문제 | [문제와 해설](04_exercises.md) | 위 그림들의 숫자를 손으로 다시 계산 |

@@ -9,9 +9,11 @@
 
   var NI3 = (global.NI3GNN = global.NI3GNN || {});
 
-  // 이전 릴리스의 data-gnn-viz 값 별칭. 앵커는 동결이고 속성만 매핑한다.
+  // 이전 릴리스의 속성 값 별칭. 앵커는 동결이고 속성만 매핑한다.
+  // data-gnn-viz(2릴리스 전)와 data-gnn-fig(직전 릴리스) 양쪽을 같은 표로 받는다.
   var LEGACY = {
-    'message-passing': 'sync-update',
+    'message-passing': 'state-transition',
+    'sync-update': 'state-transition',
     'normalization': 'norm-3up',
     'receptive-field': 'depth-frames'
   };
@@ -19,8 +21,8 @@
   function mount(slot) {
     if (slot.getAttribute('data-gnn-ready')) return;
 
-    var id = slot.getAttribute('data-gnn-fig') ||
-             LEGACY[slot.getAttribute('data-gnn-viz')];
+    var id = slot.getAttribute('data-gnn-fig') || slot.getAttribute('data-gnn-viz');
+    if (!(NI3.figures && NI3.figures[id])) id = LEGACY[id];
     var make = id && NI3.figures && NI3.figures[id];
     if (!make) return;
 

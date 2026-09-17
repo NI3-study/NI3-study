@@ -13,7 +13,7 @@
 
   var NI3 = (global.NI3GNN = global.NI3GNN || {});
   var G = NI3.graphs, la = NI3.la, gr = NI3.gr, px = NI3.px;
-  var fx = px.fx, sub = px.sub;
+  var fx = px.fx, fs = px.fs, sub = px.sub;
 
   /* ── 표기 헬퍼 ─────────────────────────────────────────── */
 
@@ -57,115 +57,408 @@
   }
 
   /* ══════════════════════════════════════════════════════════
-   * F1. 동기 갱신과 초점 — 01 §5.4  (#viz-message-passing)
+   * F1. 한 층의 상태 전이 — 01 §5.4  (#viz-message-passing)
+   *
+   *   ① H⁽ˡ⁾(지금 상태) → ② 내부 정점 · ③ 잎 정점 두 장 → ④ H⁽ˡ⁺¹⁾(다음 층 입력)
+   *
+   * 같은 산술을 네 정점에 네 번 반복하지 않는다. 난도가 달라지는 두 장만 둔다.
+   * 집계는 층 안의 한 하위 단계이지 그 자체로 한 층이 아니다.
    * ════════════════════════════════════════════════════════ */
 
-  function figSyncUpdate() {
+  var SL = '⁽ˡ⁾';
+  var SL1 = '⁽ˡ⁺¹⁾';
+
+  function figStateTransition() {
     var g = G.G4, o = gr.ops(g);
-    var x = g.nodes.map(function (id) { return g.x[id]; });
-    var upd = flat(la.matmul(o.At, colMat(x)));
+    var h = g.nodes.map(function (id) { return g.x[id]; });     // h⁽ˡ⁾
+    var m = flat(la.matmul(o.At, colMat(h)));                   // m⁽ˡ⁾ = (A+I)h⁽ˡ⁾
     var nb = {};
     g.nodes.forEach(function (id) { nb[id] = gr.neighbors(g, id); });
 
-    function arrows(focus) {
+    // 두 예시를 손으로 고르지 않는다. 차수 최대(내부)와 차수 1(잎)을 등록부에서 뽑는다.
+    var inner = g.nodes.slice().sort(function (a, b) {
+      return o.d[o.idx[b]] - o.d[o.idx[a]] || a - b;
+    })[0];
+    var leaf = g.nodes.filter(function (id) { return o.d[o.idx[id]] === 1; }).pop();
+    var collide = Math.abs(m[o.idx[inner]] - m[o.idx[leaf]]) < 1e-12;
+
+    /** 초점 정점으로 들어오는 화살만 라벨을 달고, 나머지는 흐리게 남긴다. */
+    function arrowsFor(focus) {
       var out = [];
       g.nodes.forEach(function (i) {
         nb[i].forEach(function (j) {
           out.push({
             from: j, to: i, offset: 5,
-            dim: focus != null && i !== focus,
-            label: (focus != null && i === focus) ? String(g.x[j]) : null
+            dim: i !== focus,
+            label: i === focus ? ('1·' + h[o.idx[j]]) : null
           });
         });
       });
       return out;
     }
 
-    function roles(focus) {
-      var r = {};
-      g.nodes.forEach(function (id) { r[id] = (id === focus) ? 'focus' : 'active'; });
-      return r;
-    }
+    /* ── ② ③ 국소 예시 ─────────────────────────────────── */
 
-    function values(map) {
-      var v = {};
-      g.nodes.forEach(function (id, i) { v[id] = String(map[i]); });
-      return v;
+    function localFrame(id) {
+      var i = o.idx[id];
+      var senders = [id].concat(nb[id]);          // 자기 자신이 첫 송신자다
+      var isLeaf = (id === leaf);
+      var ord = isLeaf ? '③' : '②';
+      var kind = isLeaf ? '잎 정점' : '내부 정점';
+
+      return {
+        local: id,
+        vb: [0, 0, 260, 268],
+        title: ord + ' ' + kind + ' v' + id + '의 국소 규칙',
+        desc: kind + ' v' + id + '의 상태 전이다. 입력 상태 h' + SL + '는 ' + h[i] +
+              '이고 지워지지 않는다. 자기 자신을 포함한 송신자 ' +
+              senders.map(function (j) { return 'v' + j; }).join(', ') +
+              '의 메시지를 계수 1로 가중해 모으면 중간량 m' + SL + ' = ' + fs(m[i], 2) +
+              ' 이고, 층당 하나뿐인 공유 변환 W' + SL + '와 비선형 σ를 지나면 새 상태 h' + SL1 +
+              ' = ' + fs(m[i], 2) + ' 가 된다. 송신자는 ' + senders.length + '개다.',
+        caption: ord + ' v' + sub(id) + ' (' + kind + ', 송신자 ' + senders.length + '개) — ' +
+                 'h' + sub(id) + SL + ' = ' + h[i] + ' → m' + sub(id) + SL + ' = ' + fs(m[i], 2) +
+                 ' → h' + sub(id) + SL1 + ' = ' + fs(m[i], 2) + '. ' +
+                 (isLeaf
+                   ? '이웃이 하나뿐이어도 규칙은 그대로다. 달라지는 것은 주머니 길이뿐이다. ' +
+                     (collide
+                       ? '두 예시의 새 상태가 둘 다 ' + fs(m[i], 2) +
+                         '인 것이 §6 집계 충돌의 출발점이다.'
+                       : '')
+                   : '이웃이 둘이라 주머니가 한 칸 길다. 나머지 두 정점은 이 둘의 ' +
+                     '산술을 되풀이할 뿐이라 그리지 않는다.'),
+        draw: function (root, api) {
+          heading(root, api,
+            ord + ' ' + kind + ' v' + sub(id) + ' · 메시지 ' + senders.length + '개', 10, 14);
+
+          // 테 라벨은 테 위쪽에, 초점 정점의 기호는 원반 위쪽에 붙는다.
+          // 두 글자가 같은 띠에서 만나므로 그래프를 제목 아래로 충분히 내린다.
+          var gg = placed(root, api, 8, 20);
+          var roles = {}, vals = {}, marks = {};
+          g.nodes.forEach(function (k, t) {
+            roles[k] = (k === id) ? 'focus' : 'active';
+            vals[k] = String(h[t]);
+          });
+          marks[id] = 'h' + SL;
+          api.drawGraph(gg, {
+            graph: g, arrow: api.arrow,
+            roles: roles, values: vals, marks: marks,
+            arrows: arrowsFor(id),
+            rings: [{
+              members: senders, pad: 6,
+              label: 'N(v' + sub(id) + ')∪{v' + sub(id) + '}'
+            }]
+          });
+
+          // 가중 메시지 주머니 → 집계 m → 공유 변환 → 새 상태. 왼→오가 층 방향이다.
+          var box = api.drawGrid(root, {
+            x: 36, y: 182, cw: 27, ch: 18,
+            text: senders.map(function (j) { return ['1', String(h[o.idx[j]])]; }),
+            rowLabels: senders.map(vlab),
+            rowRoles: senders.map(function (j) { return j === id ? 'focus' : null; }),
+            colLabels: ['w', 'h' + SL],
+            heading: '메시지'
+          });
+          var cy = box.y + box.h / 2;
+
+          api.S('line', {
+            'class': 'gnn-flow__line',
+            x1: box.x + box.w + 6, y1: cy, x2: 112, y2: cy, 'marker-end': api.arrow
+          }, root);
+          api.S('text', {
+            'class': 'gnn-flow__t', x: 104, y: cy - 6, 'text-anchor': 'middle', text: 'Σ'
+          }, root);
+
+          api.drawGrid(root, {
+            x: 116, y: cy - 11, cw: 42, ch: 22,
+            text: [[fs(m[i], 2)]], heading: 'm' + sub(id) + SL
+          });
+          api.S('line', {
+            'class': 'gnn-flow__line', x1: 162, y1: cy, x2: 174, y2: cy, 'marker-end': api.arrow
+          }, root);
+          api.drawBlock(root, {
+            x: 176, y: cy - 15, w: 36, h: 30, label: 'W' + SL, sub: 'σ', muted: true
+          });
+          api.S('line', {
+            'class': 'gnn-flow__line', x1: 214, y1: cy, x2: 222, y2: cy, 'marker-end': api.arrow
+          }, root);
+          api.drawGrid(root, {
+            x: 224, y: cy - 11, cw: 34, ch: 22,
+            text: [[fs(m[i], 2)]], heading: 'h' + sub(id) + SL1
+          });
+
+          note(root, api, '자기 상태도 주머니에 함께 들어간다', 12, 250);
+          note(root, api, 'w = 1 · W = I · σ = 항등 — 비학습 장난감', 12, 262);
+        }
+      };
     }
 
     var frames = [];
 
+    /* ── ① 입력 상태 ────────────────────────────────────── */
+
     frames.push({
       span: 'full',
-      vb: [0, 0, 424, 178],
-      title: '한 층에서 네 정점이 동시에 갱신된다',
-      desc: 'G4의 네 정점이 모두 같은 프레임에서 갱신된다. 정점 1은 1과 이웃 2, 3을 더해 6, ' +
-            '정점 2는 2와 1, 4를 더해 7, 정점 3은 3과 1을 더해 4, 정점 4는 4와 2를 더해 6이 된다. ' +
-            '오른쪽 격자에서 x의 각 행이 (A+I)x의 같은 행으로 옮겨간다.',
-      caption: '한 층 = 전 정점 동시 갱신. 순회 순서도, 시작 정점도 없다.',
+      vb: [0, 0, 424, 186],
+      title: '① H' + SL + ' — 층 l의 입력 상태',
+      desc: '층 l의 입력 상태 H' + SL + '다. 원반 안 숫자와 격자의 한 열이 같은 값이고 ' +
+            g.nodes.map(function (id, i) { return 'v' + id + '는 ' + h[i]; }).join(', ') +
+            ' 다. 차수는 d̃ = (' + o.dt.join(', ') + ') 이므로 내부 정점 v' + inner +
+            '과 잎 정점 v' + leaf + '이 서로 다른 난도의 두 예시가 된다. ' +
+            '이 상태는 메시지를 만드는 동안 지워지지 않는다.',
+      caption: '① 입력 상태 H' + SL + ' — 행 = 정점. 이 값은 메시지를 만드는 동안 지워지지 않고, ' +
+               '자기 자신도 송신자의 하나로 들어간다. 차수가 다른 두 정점(v' + sub(inner) +
+               ', v' + sub(leaf) + ')이 아래 두 예시다.',
       draw: function (root, api) {
-        var gg = placed(root, api, 0, 12);
+        heading(root, api, '① H' + SL + ' — 층 l의 입력 상태', 12, 16);
+        var gg = placed(root, api, 0, 26);
+        var vals = {}, names = {}, roles = {};
+        g.nodes.forEach(function (id, i) {
+          vals[id] = String(h[i]);
+          names[id] = 'v' + id + ' d̃' + o.dt[i];
+          roles[id] = (id === inner || id === leaf) ? 'focus' : 'active';
+        });
         api.drawGraph(gg, {
-          graph: g, arrow: api.arrow,
-          roles: roles(null), values: values(upd),
-          arrows: arrows(null),
-          edgeState: function () { return 'on'; }
+          graph: g, arrow: api.arrow, roles: roles, values: vals, names: names
         });
-        var b0 = api.drawGrid(root, {
-          x: 272, y: 46, cw: 52, ch: 24,
-          nums: colMat(x), text: colMat(x).map(function (r) { return [String(r[0])]; }),
-          rowLabels: rowLabelsOf(g), heading: 'x'
+        api.drawGrid(root, {
+          x: 300, y: 54, cw: 56, ch: 24,
+          nums: colMat(h), text: colMat(h).map(function (r) { return [String(r[0])]; }),
+          rowLabels: rowLabelsOf(g), heading: 'H' + SL
         });
-        var b1 = api.drawGrid(root, {
-          x: 364, y: 46, cw: 52, ch: 24,
-          nums: colMat(upd), text: colMat(upd).map(function (r) { return [String(r[0])]; }),
-          heading: '(A+I)x'
-        });
-        api.drawNodeAxisFlow(root, b1, {
-          arrow: api.arrow, gap: 20, label: 'A+I', labelAbove: true
-        });
-        void b0;
-        note(root, api, '정점 축(세로)만 섞였다. 특성 축은 아직 폭 1이다.', 14, 172);
+        note(root, api, '아래 두 예시가 될 정점', 272, 166);
+        note(root, api, '— 내부 v' + sub(inner) + ' · 잎 v' + sub(leaf), 272, 178);
       }
     });
 
-    g.nodes.forEach(function (id, i) {
-      frames.push({
-        vb: [0, 0, 250, 162],
-        title: 'v' + id + '을 읽는 소형 다중',
-        desc: '같은 한 프레임을 정점 ' + id + ' 기준으로 읽은 것이다. 이웃 ' +
-              nb[id].map(function (j) { return 'v' + j; }).join(', ') +
-              '의 값 ' + nb[id].map(function (j) { return g.x[j]; }).join(', ') +
-              '이 들어와 ' + g.x[id] + '와 더해져 ' + upd[i] + '이 된다. ' +
-              '나머지 세 정점의 화살표도 같은 프레임에 그대로 있다.',
-        caption: 'v' + id + ' 읽기: ' + g.x[id] + ' + (' +
-                 (nb[id].map(function (j) { return g.x[j]; }).join(' + ') || '0') +
-                 ') = ' + upd[i],
-        draw: function (root, api) {
-          var gg = placed(root, api, 0, 8);
-          var marks = {};
-          marks[id] = '→ ' + upd[i];
-          api.drawGraph(gg, {
-            graph: g, arrow: api.arrow,
-            roles: roles(id), values: values(x), marks: marks,
-            arrows: arrows(id),
-            edgeState: function () { return 'on'; }
-          });
-        }
-      });
+    frames.push(localFrame(inner));
+    frames.push(localFrame(leaf));
+
+    /* ── ④ 조립과 다음 층 인계 ──────────────────────────── */
+
+    frames.push({
+      handoff: true,
+      span: 'full',
+      vb: [0, 0, 424, 210],
+      title: '④ H' + SL1 + ' — 조립된 새 상태가 다음 층의 입력이 된다',
+      desc: '네 행을 모으면 H' + SL1 + ' = (' + m.map(function (v) { return fs(v, 2); }).join(', ') +
+            ') 이다. 어느 행도 다른 행의 결과를 기다리지 않으므로 네 행은 같은 국소 규칙을 ' +
+            '병렬로 적용한 것이다. 이 격자는 같은 그래프 위에 다시 얹혀 다음 층의 입력 H' + SL +
+            ' 자리에 그대로 들어가고, 층 l+1은 같은 규칙을 한 번 더 적용한다. ' +
+            '정점이 늘어도 늘어나는 것은 행과 간선 메시지이지 단계 수가 아니다.',
+      caption: '④ 조립 — 네 행이 곧 H' + SL1 + '이고, 이 격자가 다음 층의 H' + SL +
+               ' 자리에 다시 들어간다. 되먹임 화살이 그 재입력이다. 층을 쌓을수록 ' +
+               '수용 범위가 넓어지는 것은 이 고리 때문이다.',
+      draw: function (root, api) {
+        heading(root, api, '④ H' + SL1 + ' — 조립 후 다음 층으로', 12, 16);
+
+        var b = api.drawGrid(root, {
+          x: 52, y: 48, cw: 56, ch: 24,
+          nums: colMat(m), text: colMat(m).map(function (r) { return [fs(r[0], 2)]; }),
+          rowLabels: rowLabelsOf(g), heading: 'H' + SL1
+        });
+
+        api.S('line', {
+          'class': 'gnn-flow__line',
+          x1: b.x + b.w + 8, y1: 96, x2: 166, y2: 96, 'marker-end': api.arrow
+        }, root);
+        api.S('text', {
+          'class': 'gnn-flow__t', x: 142, y: 88, 'text-anchor': 'middle', text: '재입력'
+        }, root);
+
+        var gg = placed(root, api, 166, 34);
+        var vals = {}, roles = {};
+        g.nodes.forEach(function (id, i) {
+          vals[id] = fs(m[i], 2);
+          roles[id] = 'active';
+        });
+        api.drawGraph(gg, { graph: g, arrow: api.arrow, roles: roles, values: vals });
+
+        // 고리: 새 상태가 같은 그래프 위에 다시 얹혀 ①의 자리로 돌아간다.
+        api.S('path', {
+          'class': 'gnn-flow__line', fill: 'none',
+          d: 'M 292 176 L 408 176 L 408 198 L 14 198 L 14 60 L 44 60',
+          'marker-end': api.arrow
+        }, root);
+        api.S('text', {
+          'class': 'gnn-flow__t', x: 214, y: 193, 'text-anchor': 'middle',
+          text: '층 l+1 — 같은 규칙을 H' + SL1 + '에 다시 적용한다'
+        }, root);
+
+        note(root, api, '네 행 모두 같은 규칙 · 병렬', 30, 166);
+        note(root, api, 'N이 커지면 행과 메시지만 는다', 30, 180);
+      }
     });
 
     return {
-      id: 'sync-update',
-      title: '동기 갱신 — 초점은 강조이지 계산 범위가 아니다',
-      badge: '스칼라판 x = (1, 2, 3, 4)',
-      caption: '첫 프레임 하나에 네 정점의 갱신이 모두 들어 있다. 뒤의 소형 다중 네 장은 ' +
-               '같은 프레임을 정점별로 읽은 것일 뿐, 계산이 네 번 일어나는 것이 아니다. ' +
-               'v₁과 v₄가 둘 다 6인 것은 합 집계가 "이웃이 많다"와 "값이 크다"를 ' +
-               '같은 축으로 뭉갠다는 뜻이다.',
-      falsify: '메시지 패싱이 정말 BFS라면 첫 프레임에 시작 정점 하나와 화살표 한 묶음만 ' +
-               '있어야 한다. 네 묶음이 동시에 있다.',
+      id: 'state-transition',
+      title: '한 층은 상태 전이다 — H' + SL + ' → m' + SL + ' → H' + SL1,
+      badge: '스칼라판 h' + SL + ' = (1, 2, 3, 4) · w = 1인 비학습 장난감 집계',
+      caption: '무엇을 계산하는가 — 정점마다 자기 상태와 이웃 메시지를 계수로 가중해 모은 ' +
+               '중간량 mᵢ' + SL + '를 만들고, 층당 하나뿐인 공유 변환 W' + SL + '와 비선형 σ를 ' +
+               '통과시켜 새 상태 hᵢ' + SL1 + '를 얻는다. 무엇이 되는가 — 네 행을 모은 H' + SL1 +
+               '이 그대로 다음 층의 입력 H' + SL + ' 자리에 들어간다. 왜 중요한가 — 그 재입력이 ' +
+               '반복될 때마다 수용 범위가 넓어지고 표현이 과제에 쓸모 있어진다. ' +
+               '집계는 층 안의 한 하위 단계이지 그 자체로 한 층이 아니다. ' +
+               '국소 예시를 내부 v' + sub(inner) + '과 잎 v' + sub(leaf) + ' 두 장만 둔 것은, ' +
+               '나머지 두 정점이 같은 산술의 반복이어서 난도를 올리지 않기 때문이다.',
+      falsify: '메시지 패싱이 정말 순회라면 ④의 H' + SL1 + '에 아직 채워지지 않은 행이 ' +
+               '있어야 하고, 시작 정점 하나가 지목되어야 한다. 네 행이 한꺼번에 있고 ' +
+               '시작 정점은 없다.',
       cols: 2,
+      frames: function () { return frames; }
+    };
+  }
+
+  /* ══════════════════════════════════════════════════════════
+   * F1b. 집계기 충돌 — 01 §6 (#aggregation)
+   *
+   * 같은 두 이웃 주머니를 합·평균·최댓값에 통과시킨다. 화살이 한 칸으로
+   * 모이면 그 집계기는 두 주머니를 구별하지 못한 것이고, 그 뒤의 W·σ는
+   * 같은 입력에서 같은 출력을 낼 수밖에 없다.
+   * ════════════════════════════════════════════════════════ */
+
+  function figAggregate() {
+    var sum = function (s) {
+      return s.reduce(function (a, b) { return a + b; }, 0);
+    };
+    var RHO = [
+      { label: 'ρ = 합', f: sum },
+      { label: 'ρ = 평균', f: function (s) { return sum(s) / s.length; } },
+      { label: 'ρ = 최댓값', f: function (s) { return Math.max.apply(null, s); } }
+    ];
+
+    // 정전 그래프에서 실제로 충돌하는 정점 쌍을 찾아 붙인다. 번호를 적지 않는다.
+    var g = G.G4, o = gr.ops(g);
+    var gm = flat(la.matmul(o.At, colMat(g.nodes.map(function (id) { return g.x[id]; }))));
+    var pair = null;
+    g.nodes.forEach(function (a, i) {
+      g.nodes.forEach(function (b, j) {
+        if (j > i && !pair && Math.abs(gm[i] - gm[j]) < 1e-12) pair = [a, b, gm[i]];
+      });
+    });
+
+    var CASES = [
+      {
+        ord: '①', A: [1, 1, 1], B: [1],
+        lead: '개수만 다른 두 주머니',
+        why: '평균과 최댓값은 "몇 개였는가"를 지운다. 이웃 수가 신호일 때 합을 쓰는 이유다.',
+        tail: '이웃이 셋인 정점과 하나뿐인 정점이 평균·최댓값에서는 같은 정점이 된다.',
+        short: '이웃 3개와 1개가 같은 정점이 된다'
+      },
+      {
+        ord: '②', A: [1, 3], B: [2, 2],
+        lead: '총량은 같고 분포만 다른 두 주머니',
+        why: '합과 평균은 "어떻게 나뉘었는가"를 지운다. 두드러진 하나가 중요하면 최댓값이 남긴다.',
+        tail: pair
+          ? 'G4에서도 자기 연결을 포함한 합에서 v' + sub(pair[0]) + '과 v' + sub(pair[1]) +
+            '이 ' + fs(pair[2], 2) + '으로 충돌한다 — §5.4 ④의 두 행이 그것이다.'
+          : 'G4에서는 합이 네 행을 모두 갈라 놓는다.',
+        short: pair
+          ? 'G4의 v' + sub(pair[0]) + '·v' + sub(pair[1]) + '도 합에서 충돌 (§5.4 ④)'
+          : 'G4에서는 합이 네 행을 가른다'
+      }
+    ];
+
+    function caseFrame(c) {
+      var verdicts = RHO.map(function (rho) {
+        var a = rho.f(c.A), b = rho.f(c.B);
+        return { rho: rho, a: a, b: b, collide: Math.abs(a - b) < 1e-12 };
+      });
+
+      return {
+        span: 'full',
+        vb: [0, 0, 424, 288],
+        title: c.ord + ' ' + c.lead,
+        desc: '두 이웃 주머니 A = {' + c.A.join(', ') + '}, B = {' + c.B.join(', ') +
+              '}를 세 집계기에 통과시킨다. ' +
+              verdicts.map(function (v) {
+                return v.rho.label + '은 ' + fs(v.a, 2) + '와 ' + fs(v.b, 2) + '로 ' +
+                       (v.collide ? '충돌한다' : '분리한다');
+              }).join(', ') + '. ' + c.why +
+              ' 충돌한 자리에서는 두 주머니가 같은 mᵢ' + SL + '를 만들고, 그 뒤의 W' + SL +
+              '와 σ는 같은 hᵢ' + SL1 + '만 낼 수 있다 — 어떤 변환도 되살리지 못한다.',
+        caption: c.ord + ' ' + c.lead + ' — ' +
+                 verdicts.filter(function (v) { return v.collide; })
+                   .map(function (v) { return v.rho.label.slice(4); }).join('·') +
+                 '에서 두 화살이 한 칸으로 모인다(충돌). ' + c.why + ' ' + c.tail,
+        draw: function (root, api) {
+          heading(root, api, c.ord + ' A = {' + c.A.join(',') + '} vs B = {' +
+            c.B.join(',') + '}', 12, 16);
+
+          verdicts.forEach(function (v, b) {
+            var yTop = 38 + b * 72;
+            var byTop = yTop + 14 * c.A.length + 8;
+            var cA = yTop + 7 * c.A.length;
+            var cB = byTop + 7 * c.B.length;
+
+            api.S('text', {
+              'class': 'gnn-flow__t', x: 30, y: yTop + 34, text: v.rho.label
+            }, root);
+
+            [{ set: c.A, y: yTop, cy: cA, name: 'A' },
+             { set: c.B, y: byTop, cy: cB, name: 'B' }].forEach(function (s) {
+              api.drawGrid(root, {
+                x: 108, y: s.y, cw: 24, ch: 14,
+                text: colMat(s.set).map(function (r) { return [String(r[0])]; })
+              });
+              api.S('text', {
+                'class': 'gnn-grid__axis', x: 104, y: s.cy + 3.2,
+                'text-anchor': 'end', text: s.name
+              }, root);
+            });
+
+            // 충돌이면 두 화살이 같은 칸으로 모인다. 정보 손실이 눈에 보여야 한다.
+            var tA = v.collide ? yTop + 32 : cA;
+            var tB = v.collide ? yTop + 32 : cB;
+            [[cA, tA], [cB, tB]].forEach(function (p) {
+              api.S('line', {
+                'class': 'gnn-flow__line',
+                x1: 138, y1: p[0], x2: 216, y2: p[1], 'marker-end': api.arrow
+              }, root);
+            });
+
+            if (v.collide) {
+              api.drawGrid(root, {
+                x: 220, y: yTop + 23, cw: 36, ch: 18,
+                text: [[fs(v.a, 2)]], rowRoles: ['focus']
+              });
+            } else {
+              api.drawGrid(root, {
+                x: 220, y: cA - 9, cw: 36, ch: 18, text: [[fs(v.a, 2)]]
+              });
+              api.drawGrid(root, {
+                x: 220, y: cB - 9, cw: 36, ch: 18, text: [[fs(v.b, 2)]]
+              });
+            }
+
+            note(root, api,
+              (v.collide ? '충돌 — ρ(A) = ρ(B)' : '분리 — ρ(A) ≠ ρ(B)'), 272, yTop + 30);
+            note(root, api,
+              (v.collide ? '⇒ 같은 m, 같은 h' + SL1 : '⇒ 다른 m, 다른 h' + SL1),
+              272, yTop + 44);
+          });
+
+          note(root, api, '충돌한 뒤에는 어떤 W·σ도 되살리지 못한다', 12, 264);
+          note(root, api, c.short, 12, 278);
+        }
+      };
+    }
+
+    var frames = CASES.map(caseFrame);
+
+    return {
+      id: 'aggregate-collide',
+      title: '집계는 무엇을 버릴지 고르는 일이다 — 충돌과 분리',
+      badge: '이웃 다중집합 두 벌 · ρ = 합 / 평균 / 최댓값',
+      caption: '표는 요약이고, 버려지는 정보는 여기서 보인다. 같은 두 주머니 A, B가 세 띠를 ' +
+               '지나며 어떤 띠에서는 한 칸으로 모이고 어떤 띠에서는 두 칸으로 갈린다. ' +
+               '모이는 순간 정점 i의 중간량 mᵢ' + SL + '가 같아지고, 같은 중간량을 받은 뒤에는 ' +
+               '공유 변환 W' + SL + '도 비선형 σ도 두 이웃을 다시 갈라놓지 못한다 — ' +
+               '집계기 선택은 계산 편의가 아니라 무엇을 영구히 버릴지의 설계 결정이다.',
+      falsify: '"집계기는 계산 편의일 뿐"이 맞다면 여섯 띠의 결과가 모두 두 칸으로 갈라져야 한다. ' +
+               '띠마다 한 칸으로 합쳐지는 자리가 있고, 합·평균·최댓값이 서로 다른 자리에서 합쳐진다.',
+      cols: 1,
       frames: function () { return frames; }
     };
   }
@@ -204,6 +497,24 @@
         text: [cfg.extraRow.cells], rowLabels: [cfg.extraRow.label],
         rowRoles: ['out']
       });
+    }
+    // 마지막 칸에서만: 출력 격자가 ①의 자리로 돌아가는 고리를 눈으로 보여 준다.
+    // 같은 여섯 칸을 한 줄 더 반복하지 않는다. 고리 하나면 된다.
+    if (cfg.loop) {
+      var lx = box.x - 22;
+      api.S('path', {
+        'class': 'gnn-flow__line', fill: 'none',
+        d: 'M ' + (box.x + box.w / 2) + ' ' + (box.y + box.h + 6) +
+           ' L ' + (box.x + box.w / 2) + ' ' + (box.y + box.h + 24) +
+           ' L ' + lx + ' ' + (box.y + box.h + 24) +
+           ' L ' + lx + ' ' + (box.y + box.ch / 2) +
+           ' L ' + (box.x - 6) + ' ' + (box.y + box.ch / 2),
+        'marker-end': api.arrow
+      }, root);
+      api.S('text', {
+        'class': 'gnn-flow__t', x: box.x + box.w / 2, y: box.y + box.h + 38,
+        'text-anchor': 'middle', text: '다음 층의 ① 자리로'
+      }, root);
     }
     // 긴 설명은 SVG 안에 넣지 않는다. 좁은 프레임에서는 넘치고 줄바꿈도 되지 않는다.
     // 프레임 캡션(HTML)이 그 자리를 맡는다.
@@ -257,12 +568,14 @@
       var VB = [0, 0, 204, 178];
       var list = [
         {
-          vb: VB, title: '① X — 입력 특성',
-          desc: '정점 4개, 채널 2개의 격자. 행이 정점, 열이 특성이다. 연산자는 아직 없다.',
-          caption: '① X — 행 = 정점, 열 = 특성. 연산자는 아직 없다.',
+          vb: VB, title: '① X = H' + SL + ' — 층 l의 입력 상태',
+          desc: '정점 4개, 채널 2개의 격자다. 행이 정점, 열이 특성이고 이것이 층 l의 입력 상태 ' +
+                'H' + SL + '다. 연산자는 아직 없다.',
+          caption: '① X = H' + SL + ' — 행 = 정점, 열 = 특성. 층 l의 입력 상태이고 ' +
+                   '연산자는 아직 없다.',
           draw: function (root, api) {
             lineageFrame(root, api, {
-              heading: '① X', M: X, rowLabels: rows
+              heading: '① X = H' + SL, M: X, rowLabels: rows
             });
           }
         },
@@ -314,15 +627,19 @@
           }
         },
         {
-          vb: VB, title: '⑥ σ(ÂXW) — 비선형',
+          vb: VB, title: '⑥ σ(ÂXW) = H' + SL1 + ' — 비선형과 다음 층 인계',
           desc: 'ReLU가 음수 칸 ' + clipped + '개를 0으로 자른다. ' +
-                '이 비선형 때문에 두 층은 Â²XW로 접히지 않는다.',
-          caption: '⑥ σ(ÂXW) — 음수 ' + clipped +
+                '이 비선형 때문에 두 층은 Â²XW로 접히지 않는다. ' +
+                '이 격자가 층 l의 출력 H' + SL1 + '이고, 되먹임 화살이 가리키듯 ' +
+                '그대로 다음 층의 ① 자리, 즉 H' + SL + ' 자리에 들어간다.',
+          caption: '⑥ σ(ÂXW) = H' + SL1 + ' — 음수 ' + clipped +
                    '칸이 0으로 잘린다. 층이 접히지 않는 이유이고, ' +
-                   '다음 층은 이 격자를 ① 자리에 다시 넣는다.',
+                   '되먹임 화살대로 다음 층은 이 격자를 ① 자리(H' + SL + ')에 다시 넣는다. ' +
+                   '②–⑤는 층 하나 안의 하위 단계이지 각각이 한 층이 아니다.',
           draw: function (root, api) {
             lineageFrame(root, api, {
-              heading: '⑥ σ(ÂXW)', M: S1, rowLabels: rows, scale: 1
+              heading: '⑥ σ(ÂXW) = H' + SL1, M: S1, rowLabels: rows, scale: 1,
+              loop: true
             });
           }
         }
@@ -332,15 +649,18 @@
 
     return {
       id: where === 'bridge' ? 'lineage-bridge' : 'lineage-strip',
-      title: 'MLP에서 GCN까지 — 한 줄의 정지 스트립',
-      badge: '2채널판 X, W = [[1, −1], [−1, 1]]',
-      caption: where === 'bridge'
+      title: '한 층 안의 여섯 칸 — H' + SL + '에서 H' + SL1 + '까지',
+      badge: '2채널판 X = H' + SL + ', W = [[1, −1], [−1, 1]]',
+      caption: (where === 'bridge'
         ? '03의 §1–§5는 이 여섯 프레임이다. 정점 좌표도 행 순서도 바뀌지 않고 ' +
           '격자 안의 숫자만 바뀐다. 왼쪽 연산자는 세로(정점 축)를, 오른쪽 W는 ' +
           '가로(특성 축)를 섞는다.'
         : '01의 손계산 $AX$, $(A+I)X$를 그대로 이어받아 Â, W, σ까지 간다. ' +
           '02 §6과 04 문제 4의 숫자가 여기 ④–⑤ 프레임에 그대로 있다. ' +
-          '첫 열 W = [1, −1]ᵀ가 04 문제 4의 W다.',
+          '첫 열 W = [1, −1]ᵀ가 04 문제 4의 W다.') +
+        ' 여섯 칸은 층 여섯 개가 아니라 층 하나 안의 하위 단계다 — 집계(②–④)는 ' +
+        '그중 한 단계이고, ①이 H' + SL + ', ⑥이 H' + SL1 + '이며 마지막 칸의 ' +
+        '되먹임 화살이 그 출력을 다음 층의 ① 자리로 돌려보낸다.',
       falsify: 'Â와 W가 같은 축을 섞는다면 ④와 ⑤에서 격자의 같은 방향이 ' +
                '두 번 눌려야 한다. 한 번은 세로, 한 번은 가로다.',
       cols: 2,
@@ -579,7 +899,8 @@
       caption: 'G4▲ — 정점 4개·지름 3인 G4에서는 이웃 증가도 병목도 정의상 보이지 않는다. ' +
                '그래서 잎 네 개를 더했다. 좌표·번호·특성은 그대로다.',
       draw: function (root, api) {
-        var gg = placed(root, api, -4, 58);
+        // 테는 정점보다 pad만큼 위로 자란다. 58이면 테 라벨이 프레임 위로 잘린다.
+        var gg = placed(root, api, -4, 66);
         var inside = tri.nodes.filter(function (id) { return tdist[id] <= 3; });
         var vals = {}, roles = {}, marks = {};
         tri.nodes.forEach(function (id) {
@@ -857,7 +1178,9 @@
             CHOICES.map(function (p) { return p[0] + ' ' + p[1]; }).join('; ') + '.',
       caption: 'λ는 정점 축 객체가 아니므로 원반 위에도 격자 안에도 그리지 않는다. ' +
                'renormalization은 눈금이 안쪽으로 죄어지는 한 장면이고, ' +
-               '유도 네 단계 중 (d)만 동치 변형이 아니다.',
+               '유도 네 단계 중 (d)만 동치 변형이 아니다. ' +
+               'G4는 이분 그래프라 위 두 눈금이 같은 자리에 찍히지만 ' +
+               '대응하는 고유벡터는 서로 다르다.',
       draw: function (root, api) {
         api.drawAxis(root, {
           x: 132, y: 34, w: 300, min: -1.15, max: 2.15, rowH: 26,
@@ -884,8 +1207,8 @@
           ticks: [-1, 0, 1, 2].map(function (v) {
             return { v: v, label: String(v) };
           }),
-          caption: 'G4는 이분 그래프라 위 두 눈금이 같은 자리에 찍힌다. ' +
-                   '대응하는 고유벡터는 서로 다르다.'
+          // SVG 글자는 줄바꿈이 없다. 긴 문장은 프레임 캡션(HTML)이 맡는다.
+          caption: '위 두 눈금은 같은 자리 — 고유벡터는 다르다'
         });
         CHOICES.forEach(function (p, i) {
           api.S('text', {
@@ -1157,7 +1480,8 @@
   /* ══ 등록 ══════════════════════════════════════════════════ */
 
   NI3.figures = {
-    'sync-update': figSyncUpdate,
+    'state-transition': figStateTransition,
+    'aggregate-collide': figAggregate,
     'lineage-strip': function () { return figLineage('intro'); },
     'lineage-bridge': function () { return figLineage('bridge'); },
     'norm-3up': figNorm,
