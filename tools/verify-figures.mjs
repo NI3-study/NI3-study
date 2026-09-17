@@ -468,6 +468,11 @@ ok('왼쪽 {3,5,6}에서 오른쪽 {4,7,8}로 가는 간선은 (1,2) 하나뿐',
 /* ══ 5. 스펙트럼 ═══════════════════════════════════════ */
 
 section('스펙트럼');
+// 05가 쓰는 분해. 이름은 이미 최상위에 있는 x4·specL·rt·specA·sq와 겹치지 않는다.
+const opsG4 = NI3.gr.ops(NI3.graphs.G4);
+const eigL = NI3.la.jacobiEig(opsG4.L);
+const c = flat(mul(eigL.vectors, colOf(x4)));
+
 // 경로 C: 손유도. G4는 경로 그래프 3–1–2–4이고 이분이므로 λ_max(L) = 2.
 const specL = [0, 0.5, 1.5, 2];
 for (const lam of specL) {
@@ -497,7 +502,7 @@ nearArr('Â √d̃ = √d̃ (고유값 1)', flat(mul(G4.Ahat, colOf(sq))), sq, 1
   nearArr('site: spec(I + D^-1/2 A D^-1/2)', NI3.la.jacobiEig(ops.Iplus).values, specL, 1e-8);
   nearArr('site: spec(Â)', NI3.la.jacobiEig(ops.Ahat).values, specA, 1e-8);
 
-  const eig = NI3.la.jacobiEig(ops.L);
+  const eig = eigL;
   const flips = eig.vectors.map((v) =>
     NI3.graphs.G4.edges.filter(([a, b]) => v[ops.idx[a]] * v[ops.idx[b]] < 0).length);
   nearArr('고유벡터의 부호 변화 = 0,1,2,3 (주파수 순서)', flips, [0, 1, 2, 3], 0);
@@ -507,9 +512,99 @@ nearArr('Â √d̃ = √d̃ (고유값 1)', flat(mul(G4.Ahat, colOf(sq))), sq, 1
   });
 }
 {
-  const t = frameText(site('spectral'));
-  ok('site: (d)를 동치가 아니라고 명시', /동치 변형이 아니다/.test(t));
-  ok('site: λ_max ≈ 2 를 근사로 표시', /근사/.test(t));
+  const t = frameText(site('spec-explode')) + frameText(site('spec-mu'));
+  ok('site: (d)를 동치가 아니라고 명시', /동치가 아니다|동치를 깨는/.test(
+    site('spec-mu').falsify + t));
+  ok('site: λ_max ≈ 2 를 근사로 표시', /근사/.test(frameText(site('spec-cheby'))));
+  // M-12: 두 연산자의 고유벡터는 언제나 같다. 옛 캡션이 되살아나면 잡는다.
+  ok('site: "대응 고유벡터는 다르다"가 남아 있지 않다',
+    !/대응(하는)? 고유벡터는 (서로 )?다르다/.test(t));
+}
+
+/* ══ 5b. 05 스펙트럼 다리 — 삼중 대조 ═══════════════════ */
+
+section('05 스펙트럼 다리');
+{
+  const R2 = Math.SQRT2, R3 = Math.sqrt(3);
+
+  // 경로 B(사이트 분해) ↔ 경로 A(여기서 다시 센 값) ↔ 경로 C(닫힌 형태)
+  nearArr('c = Uᵀx', c, [4.5898, -0.9856, -2.8167, -0.1691], 1e-4);
+  const cC = [(3 * R2 + 7) / S6, -(1 + R2) / S6, (3 - 7 * R2) / S6, (1 - R2) / S6];
+  nearArr('c 닫힌 형태', c, cC, 1e-9);
+  near('Σc² = ‖x‖² = 30', c.reduce((a, v) => a + v * v, 0), 30, 1e-9);
+
+  const roughA = flat(mul(G4.L, colOf(x4))).reduce((a, v, i) => a + v * x4[i], 0);
+  near('xᵀLx = 12.4437', roughA, 12.4437, 1e-4);
+  near('Σλc² = xᵀLx',
+    eigL.values.reduce((a, l, k) => a + l * c[k] * c[k], 0), 12.4437, 1e-4);
+  near('xᵀLx = ½c₂² + 1.5c₃² + 2c₄²  [경로 C]',
+    0.5 * cC[1] * cC[1] + 1.5 * cC[2] * cC[2] + 2 * cC[3] * cC[3], roughA, 1e-9);
+  near('거칢 중 λ=1.5 모드의 몫', 1.5 * c[2] * c[2] / 12.443651, 0.9564, 1e-3);
+  near('제곱합 중 λ=1.5 모드의 몫', c[2] * c[2] / 30, 0.2645, 1e-3);
+
+  // S8 — g(λ) = 1 − λ 는 정점 쪽 S 한 번과 같다. 배수표 (1,0,0,0)은 √d 방향만 남긴다.
+  const gain = eigL.values.map((l) => 1 - l);
+  const back = [0, 1, 2, 3].map((i) =>
+    c.reduce((s, t, k) => s + t * gain[k] * eigL.vectors[k][i], 0));
+  nearArr('Ug(Λ)Uᵀx = Sx', back, flat(mul(G4.Ssym, colOf(x4))), 1e-9);
+  nearArr('Sx ≈ (3.1213, 3.3284, 0.7071, 1.4142)',
+    flat(mul(G4.Ssym, colOf(x4))), [3.1213, 3.3284, 0.7071, 1.4142], 1e-4);
+  const only = [0, 1, 2, 3].map((i) => c[0] * eigL.vectors[0][i]);
+  nearArr('g = (1,0,0,0) 결과 [경로 C]', only,
+    [(6 + 7 * R2) / 6, (6 + 7 * R2) / 6, (3 * R2 + 7) / 6, (3 * R2 + 7) / 6], 1e-9);
+
+  // S10 — K-hop 국소성.
+  near('(L²)₃₄ = 0', pow(G4.L, 2)[G4.idx[3]][G4.idx[4]], 0, 1e-12);
+  near('(L³)₃₄ = −1/4', pow(G4.L, 3)[G4.idx[3]][G4.idx[4]], -0.25, 1e-12);
+
+  // S11 — Chebyshev 세 벌과 재척도.
+  const T = NI3.la.cheby(opsG4.Ltilde, 2);
+  near('λ_max(G4) = 2', opsG4.lmax, 2, 1e-9);
+  ok('T₀(L̃) = I', T[0].every((r, i) => r.every((v, j) => Math.abs(v - (i === j ? 1 : 0)) < 1e-12)));
+  ok('T₁(L̃) = −S', T[1].every((r, i) =>
+    r.every((v, j) => Math.abs(v + G4.Ssym[i][j]) < 1e-12)));
+  near('T₂(L̃)₁₁ = 1/2', T[2][G4.idx[1]][G4.idx[1]], 0.5, 1e-12);
+  near('T₂(L̃)₃₃ = 0', T[2][G4.idx[3]][G4.idx[3]], 0, 1e-12);
+  near('T₂(L̃)₁₄ = 1/√2', T[2][G4.idx[1]][G4.idx[4]], 1 / Math.SQRT2, 1e-12);
+  ok('T₂(L̃)는 1-hop 세 쌍에서 정확히 0',
+    [[1, 2], [1, 3], [2, 4]].every(([a, b]) => Math.abs(T[2][G4.idx[a]][G4.idx[b]]) < 1e-12));
+
+  const oc = NI3.gr.ops(NI3.graphs.G4circ);
+  ok('G4○는 G4의 네 정점과 세 간선을 그대로 둔다',
+    [[1, 2], [1, 3], [2, 4]].every(([a, b]) => oc.A[oc.idx[a]][oc.idx[b]] === 1) &&
+    [1, 2, 3, 4].every((id) =>
+      NI3.graphs.G4circ.pos[id].join(',') === NI3.graphs.G4.pos[id].join(',')));
+  near('G4○ λ_max = 1 − cos(4π/5)  [5-사이클]', oc.lmax, 1 - Math.cos(4 * Math.PI / 5), 1e-9);
+  near('G4○ λ_max ≈ 1.809', oc.lmax, 1.809017, 1e-6);
+  near('G4○ 2/λ_max ≈ 1.106', 2 / oc.lmax, 1.1056, 1e-4);
+
+  // S13·S15 — 반복과 눈금.
+  nearArr('(I+S)⁴x = (40.29, 44.36, 27.20, 32.96)',
+    flat(mul(pow(G4.Iplus, 4), colOf(x4))), [40.29, 44.36, 27.20, 32.96], 5e-2);
+  nearArr('(I+S)⁸x = (668.1, 688.7, 465.1, 494.3)',
+    flat(mul(pow(G4.Iplus, 8), colOf(x4))), [668.1, 688.7, 465.1, 494.3], 5e-2);
+  const mu = specA[2];
+  near('μ₃ = 0.7287', mu, 0.7287136, 1e-6);
+  near('μ₃의 8제곱 = 0.0795 (0.0806이 아니다)', Math.pow(mu, 8), 0.079516, 1e-6);
+
+  // S15 반증 — Â의 μ=1 모드 √d̃ 를 L의 모드로 쪼개면 성분이 둘이다.
+  const comp = flat(mul(eigL.vectors, colOf(sq)));
+  nearArr('√d̃ 의 분해 [경로 C]', comp, [2 + 2 / R3, 0, (2 * R3 - 4) / S6, 0], 1e-9);
+  near('u₁ᵀ√d̃ ≈ 3.1547', comp[0], 3.1547, 1e-4);
+  near('u₃ᵀ√d̃ ≈ −0.2188', comp[2], -0.2188, 1e-4);
+  ok('0이 아닌 성분이 둘 — √d̃ 는 L의 고유벡터가 아니다',
+    comp.filter((v) => Math.abs(v) > 1e-9).length === 2);
+}
+{
+  const t = frameText(site('spec-mu'));
+  // 부록 A 머리의 재계산 정정 — 거듭제곱을 말하는 자리에서는 네 자리 μ를 쓴다.
+  ok('site: μ 를 네 자리 0.7287 로 적는다', t.includes('0.7287'));
+  ok('site: μ의 8제곱이 0.0795 (0.0806·0.0798이 아니다)',
+    t.includes('0.0795') && !t.includes('0.0806') && !t.includes('0.0798'));
+  const tc = frameText(site('spec-cheby'));
+  ok('site: G4○의 λ_max = 1.809 와 2/λ_max = 1.106',
+    tc.includes('1.809') && tc.includes('1.106'));
+  ok('site: Chebyshev 캡션이 근사의 범위를 K = 1 뒤로 한정한다', /K = 1/.test(tc));
 }
 
 /* ══ 6. 반복 전파와 수렴 ═══════════════════════════════ */
@@ -578,9 +673,10 @@ ok('라벨 없는 v₃을 빼면 2-hop 밖의 v₄ 예측도 바뀐다',
 
 section('명세 규약');
 const ALL = Object.keys(NI3.figures);
-// 8개다. 계보 스트립은 한 자리에만 선다 — 같은 여섯 프레임을 두 문서에서
-// 다시 그리던 lineage-bridge는 삭제했다.
-ok('그림 8개가 등록되어 있다', ALL.length === 8, ALL.join(', '));
+// 16개다. 계보 스트립은 한 자리에만 선다 — 같은 여섯 프레임을 두 문서에서
+// 다시 그리던 lineage-bridge는 삭제했다. 02의 'spectral' 한 장은 05의 아홉 장으로
+// 갈라졌다(8 − 1 + 9 = 16).
+ok('그림 16개가 등록되어 있다', ALL.length === 16, ALL.join(', '));
 let controls = 0;
 for (const id of ALL) {
   const spec = site(id);
@@ -663,12 +759,23 @@ for (const id of ALL) {
 
 section('본문과 무JS 폴백');
 const md = (f) => readFileSync(join(ROOT, 'docs', f), 'utf8');
+// 통합 전 단계에서 05가 아직 없을 수 있다. 그때도 조용히 건너뛰지 않는다 —
+// 빈 문자열을 넣어 05 관련 단언이 전부 FAIL로 남게 하고, 원인을 한 줄로 알린다.
+const mdSoft = (f) => {
+  try {
+    return md(f);
+  } catch (err) {
+    console.error(`  MISSING  docs/${f} — 이 파일을 쓰는 검사는 전부 실패로 남는다`);
+    return '';
+  }
+};
 const D = {
   idx: md('index.md'),
   d01: md('01_gnn_gentle_guide.md'),
   d02: md('02_kipf2017_gcn_guide.md'),
   d03: md('03_bridge_mlp_to_gcn.md'),
-  d04: md('04_exercises.md')
+  d04: md('04_exercises.md'),
+  d05: mdSoft('05_spectral_bridge.md')
 };
 
 // 동결 앵커 — 이전 릴리스의 외부 링크가 깨지면 안 된다.
@@ -691,7 +798,7 @@ ok('02 폴백 raw 출력', D.d02.includes('(17, 7, 4, 6, 6, 7)'));
 ok('02 폴백 mean 출력', D.d02.includes('(3.40, 2.33, 2.00, 3.00, 3.00, 3.50)'));
 ok('02 폴백 sym 행 합', D.d02.includes('(1.41, 1.00, 0.82, 0.91, 0.82, 0.82)'));
 ok('02 폴백 수렴 극한', D.d02.includes('(2.615, 2.615, 2.135, 2.135)'));
-ok('02 폴백 spec(L) = 0, 0.5, 1.5, 2', D.d02.includes('0, 0.5, 1.5, 2'));
+ok('05 폴백 spec(L) = 0, 0.50, 1.50, 2.00', D.d05.includes('0, 0.50, 1.50, 2.00'));
 ok('03 폴백 k=3 기여 순위', D.d03.includes('v4 = 0.056'));
 ok('04 해설 7의 1/18', D.d04.includes('\\tfrac1{18}'));
 
@@ -783,14 +890,15 @@ ok('lineage-bridge 등록이 남아 있지 않다', !FIG_SRC.includes('lineage-b
 // (7) 읽기 순서 01 → 03 → 02 → 04.
 const NAVSRC = readFileSync(join(ROOT, 'mkdocs.yml'), 'utf8');
 const navOrder = (NAVSRC.match(/0\d_[a-z0-9_]+\.md/g) || []);
-ok('mkdocs nav 순서가 01 → 03 → 02 → 04',
+ok('mkdocs nav 순서가 01 → 03 → 05 → 02 → 04',
   navOrder.join(',') === '01_gnn_gentle_guide.md,03_bridge_mlp_to_gcn.md,' +
-    '02_kipf2017_gcn_guide.md,04_exercises.md', navOrder.join(','));
+    '05_spectral_bridge.md,02_kipf2017_gcn_guide.md,04_exercises.md', navOrder.join(','));
 const idxOrder = (D.idx.match(/0\d_[a-z0-9_]+\.md(?=\))/g) || []);
 const idxTable = idxOrder.slice(idxOrder.indexOf('01_gnn_gentle_guide.md'));
-ok('index 권장 순서표도 01 → 03 → 02 → 04',
+ok('index 권장 순서표도 01 → 03 → 05 → 02 → 04',
   /\| 1 \| \[01 /.test(D.idx) && /\| 2 \| \[03 /.test(D.idx) &&
-  /\| 3 \| \[02 /.test(D.idx) && /\| 4 \| \[04 /.test(D.idx), idxTable.join(','));
+  /\| 3 \| \[05 /.test(D.idx) && /\| 4 \| \[02 /.test(D.idx) &&
+  /\| 5 \| \[04 /.test(D.idx), idxTable.join(','));
 ok('index 첫 화면에 GNN의 상이 한 문장으로 있다',
   /\*\*GNN 블록은 그래프를 받아 같은 배선의 그래프를 돌려줍니다\.\*\*/.test(D.idx));
 ok('정전의 뜻이 첫 등장에 풀려 있다', /정전\(正典, canonical/.test(D.idx));
@@ -816,7 +924,33 @@ ok('03이 01·02보다 짧다', D.d03.length < D.d01.length && D.d03.length < D.
 // (10) 문서 간 링크가 살아 있는가 — 앵커까지 확인한다.
 const FILES = { 'index.md': D.idx, '01_gnn_gentle_guide.md': D.d01,
   '02_kipf2017_gcn_guide.md': D.d02, '03_bridge_mlp_to_gcn.md': D.d03,
-  '04_exercises.md': D.d04 };
+  '04_exercises.md': D.d04, '05_spectral_bridge.md': D.d05 };
+
+/* ══ 9c. 05 폴백 문단의 손계산 대조 ════════════════════
+ *
+ * 같은 파일 안에서 k = 1, 2, 8은 맞고 k = 4만 틀렸던 전사 오류가 실제로 났다.
+ * 폴백이 접근성 정본이므로 본문 숫자도 여기서 다시 센다.
+ */
+for (const [k, want] of [[1, [2.22, 2.63, 1.91, 2.82]], [2, [2.40, 2.77, 1.86, 2.48]],
+                         [4, [2.52, 2.71, 1.97, 2.30]], [8, [2.59, 2.64, 2.09, 2.18]]]) {
+  // 반올림 전 값으로 대조한다. toFixed(2) 결과끼리 비교하면 항등 검사가 된다.
+  const raw = flat(mul(pow(G4.Ahat, k), colOf(x4)));
+  nearArr(`Â^${k}x`, raw, want, 5e-3);
+  const got = raw.map((v) => v.toFixed(2));
+  ok(`05 폴백 Â^${k}x`, D.d05.includes('(' + got.join(', ') + ')'), got.join(', '));
+}
+// (I+S)^k 계열도 Â^k와 같은 삼중 대조에 넣는다. 본문·폴백에만 있고 검증이 없던 계열이다.
+for (const [k, want] of [[4, [40.29, 44.36, 27.20, 32.96]],
+                         [8, [668.1, 688.7, 465.1, 494.3]]]) {
+  const raw = flat(mul(pow(G4.Iplus, k), colOf(x4)));
+  nearArr(`(I+S)^${k}x`, raw, want, 5e-2);
+  // 경로 C — I+S = 2I−L 이므로 (I+S)^k x = Σ (2−λ_j)^k c_j u_j 다.
+  const cf = eigL.values.map((l, j) => Math.pow(2 - l, k) * c[j]);
+  nearArr(`(I+S)^${k}x 닫힌 형태`, raw,
+    [0, 1, 2, 3].map((i) => cf.reduce((s, t, j) => s + t * eigL.vectors[j][i], 0)), 1e-6);
+}
+ok('05 폴백 (I+S)⁸x', D.d05.includes('668.1') && D.d05.includes('494.3'));
+ok('05가 √6 상수를 그림이 아니라 본문에서만 쓴다', !/Math\.sqrt\(6\)/.test(FIG_SRC));
 function anchorsOf(src) {
   const set = new Set();
   for (const m of src.matchAll(/\{ *#([a-z0-9-]+)/g)) set.add(m[1]);

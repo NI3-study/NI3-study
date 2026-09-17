@@ -53,6 +53,58 @@
     return R;
   }
 
+  /** 같은 크기 행렬의 차 A − B. */
+  function msub(A, B) {
+    return A.map(function (r, i) {
+      return r.map(function (v, j) { return v - B[i][j]; });
+    });
+  }
+
+  /** 행렬의 스칼라배. */
+  function mscale(A, s) {
+    return A.map(function (r) {
+      return r.map(function (v) { return v * s; });
+    });
+  }
+
+  /** 행렬 × 벡터 → 벡터. */
+  function matvec(A, v) {
+    return A.map(function (r) {
+      return r.reduce(function (a, t, j) { return a + t * v[j]; }, 0);
+    });
+  }
+
+  /** 두 벡터의 내적. */
+  function dot(u, v) {
+    return u.reduce(function (a, t, i) { return a + t * v[i]; }, 0);
+  }
+
+  /**
+   * Chebyshev 다항식 벌 [T₀(M), …, T_K(M)].
+   * T₀ = I, T₁ = M, T_k = 2M T_{k-1} − T_{k-2}.
+   */
+  function cheby(M, K) {
+    var out = [eye(M.length)];
+    if (K >= 1) out.push(clone(M));
+    for (var k = 2; k <= K; k++) {
+      out.push(msub(mscale(matmul(M, out[k - 1]), 2), out[k - 2]));
+    }
+    return out;
+  }
+
+  /**
+   * 약분판 표시 배율. 0이 아닌 성분 가운데 절댓값이 가장 작은 것을 1로 만든다.
+   * '비영'의 기준은 jacobiEig의 부호 규약과 같은 1e-9다.
+   */
+  function vscale(u) {
+    var m = Infinity;
+    u.forEach(function (v) {
+      var a = Math.abs(v);
+      if (a > 1e-9 && a < m) m = a;
+    });
+    return m === Infinity ? 1 : 1 / m;
+  }
+
   function rowSums(A) {
     return A.map(function (r) {
       return r.reduce(function (a, b) { return a + b; }, 0);
@@ -83,7 +135,11 @@
 
   /**
    * 대칭 행렬의 고유분해 (순환 Jacobi).
-   * 반환: { values: [오름차순], vectors: [열이 고유벡터인 행렬] }
+   * 반환: { values: [오름차순], vectors: [vectors[k] = k번째 고유벡터] }
+   *
+   * vectors는 "열이 고유벡터인 행렬"이 아니다. 배열의 배열로 보면 k번째 행이
+   * k번째 고유벡터이므로 그것이 곧 Uᵀ다. 따라서 c = Uᵀx 는 matmul(vectors, colMat(x))
+   * 한 줄이고, U가 필요한 자리에서는 행/열을 바꿔 읽는다.
    */
   function jacobiEig(Ain) {
     var n = Ain.length, A = clone(Ain), V = eye(n);
@@ -125,10 +181,14 @@
     for (i = 0; i < n; i++) {
       var col = [];
       for (k = 0; k < n; k++) col.push(V[k][i]);
-      // 부호 규약: 절댓값이 가장 큰 성분을 양수로 맞춘다.
-      var big = 0;
-      for (k = 0; k < n; k++) if (Math.abs(col[k]) > Math.abs(col[big]) + 1e-12) big = k;
-      if (col[big] < 0) col = col.map(function (v) { return -v; });
+      // 부호 규약: 첫 비영 성분을 양수로 맞춘다.
+      // 임계값 없이 col[0] < 0 으로 판정하면 첫 성분이 수치 잡음(1e-17)인
+      // 고유벡터에서 부호가 무작위로 뒤집힌다. 기준은 vscale과 같은 1e-9다.
+      var first = -1;
+      for (k = 0; k < n; k++) {
+        if (Math.abs(col[k]) > 1e-9) { first = k; break; }
+      }
+      if (first >= 0 && col[first] < 0) col = col.map(function (v) { return -v; });
       pairs.push({ value: A[i][i], vector: col });
     }
     pairs.sort(function (a, b) { return a.value - b.value; });
@@ -227,6 +287,13 @@
         return r.map(function (v, j) { return (i === j ? 1 : 0) - v; });
       })
     };
+
+    // λ_max — L의 가장 큰 고유값. G4처럼 양쪽으로 갈리는 그래프에서만 정확히 2다.
+    res.lmax = jacobiEig(res.L).values[n - 1];
+    // L̃ = (2/λ_max)L − I. 고유값을 [−1, 1] 안으로 눌러 넣은 판이며,
+    // Ã = A + I 의 물결(자기 연결)과는 뜻이 다르다.
+    res.Ltilde = msub(mscale(res.L, 2 / res.lmax), eye(n));
+
     graph._ops = res;
     return res;
   }
@@ -295,15 +362,33 @@
     source: 'G4 확장 — 이웃 증가와 병목 간선을 동시에 담기 위한 최소 확장.'
   };
 
+  // G4○ — G4를 5-사이클로 닫은 확장. λ_max가 정확히 2가 아닌 그래프.
+  var G4circ = {
+    id: 'G4circ',
+    label: 'G4○',
+    nodes: [1, 2, 3, 4, 5],
+    edges: [[1, 2], [1, 3], [2, 4], [3, 5], [4, 5]],
+    pos: {
+      1: [86, 40], 2: [166, 40], 3: [34, 104], 4: [218, 104],
+      5: [126, 150]
+    },
+    radius: 17,
+    viewBox: [2, 12, 244, 178],
+    x: { 1: 1, 2: 2, 3: 3, 4: 4, 5: 5 },
+    source: 'G4 확장 — λ_max가 정확히 2가 아닌 그래프를 만들기 위해 5-사이클로 닫았다.'
+  };
+
   /* ══ 공개 ══════════════════════════════════════════════════ */
 
   NI3.la = {
     zeros: zeros, eye: eye, clone: clone, matmul: matmul, matpow: matpow,
+    msub: msub, mscale: mscale, matvec: matvec, dot: dot,
+    cheby: cheby, vscale: vscale,
     rowSums: rowSums, diagScale: diagScale, relu: relu,
     softmaxRows: softmaxRows, jacobiEig: jacobiEig
   };
 
-  NI3.graphs = { G4: G4, G4star: G4star, G4tri: G4tri };
+  NI3.graphs = { G4: G4, G4star: G4star, G4tri: G4tri, G4circ: G4circ };
 
   NI3.gr = {
     ops: ops,

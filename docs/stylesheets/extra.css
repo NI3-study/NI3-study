@@ -277,6 +277,18 @@
   stroke: var(--gnn-line);
 }
 
+/* 점찍은 현 — 배선에 없는 쌍인데 연산자에는 값이 있는 자리(다항식이 만든 2-hop 계수).
+   기존 .gnn-edge--off(점선 5 4)는 "이 프레임에서 값이 흐르지 않는 실재 간선"이라는
+   다른 뜻으로 figDepth·figSemi가 이미 쓰고 있으므로 재사용하지 않는다. */
+.gnn-edge--phantom {
+  stroke: var(--gnn-line-off);
+  stroke-dasharray: 1 3;
+  /* .gnn-edge의 stroke-linecap:round를 물려받으면 마개가 굵기의 절반씩 양쪽으로
+     늘어나 1 3 점찍기가 통째로 메워진다(굵기가 2를 넘는 2-hop 현이 그렇다).
+     그러면 점찍은 현이 실선처럼 보여 "배선에 없는 쌍"이라는 뜻이 사라진다. */
+  stroke-linecap: butt;
+}
+
 .gnn-edge--w {
   stroke: var(--gnn-active-stroke);
   stroke-linecap: round;
@@ -441,6 +453,16 @@
   fill: var(--gnn-focus-stroke);
 }
 
+/* ── 막대 ───────────────────────────────────────────────── */
+
+/* 막대 — 정점 축 위에 살지 않는 양(모드별 계수·배수). 색 단독 인코딩 금지이므로
+   음수는 색이 아니라 0선 반대쪽 위치와 병기된 값 숫자로 구별한다. */
+.gnn-bar { fill: var(--gnn-cell-fill); stroke: none; }
+.gnn-bar--neg { fill: var(--gnn-cell-fill); }
+.gnn-bar__zero { stroke: var(--gnn-line); stroke-width: 1.2; }
+.gnn-bar__label { font-size: 9.5px; font-weight: 700; fill: var(--gnn-text); }
+.gnn-bar__val { font-size: 9px; fill: var(--gnn-muted); }
+
 /* ── W 기둥 ─────────────────────────────────────────────── */
 
 .gnn-block rect {
@@ -565,6 +587,20 @@
 
 @media screen and (max-width: 36rem) {
   .md-typeset .gnn-fieldset { flex: 1 1 100%; }
+}
+
+/* 좁은 화면에서 span:'full' 프레임(viewBox 폭 446~452)은 통째로 축소되어 9px 축
+   라벨이 6~7px가 된다. 그 아래로는 읽히지 않는다. 그래서 viewBox 폭만큼은 최소로
+   확보하고(배율 ≥ 1), 모자라는 만큼은 프레임 안쪽만 가로로 스크롤시킨다. 데스크톱
+   에서는 프레임이 이미 470px보다 넓으므로 이 두 줄이 아무 일도 하지 않는다 —
+   중단점이 필요 없고, 페이지 자체는 어느 폭에서도 가로로 넘치지 않는다. */
+.md-typeset .gnn-frame--full .gnn-frame__stage {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.md-typeset .gnn-frame--full .gnn-frame__stage svg {
+  min-width: 470px;
 }
 
 @media (prefers-reduced-motion: reduce) {

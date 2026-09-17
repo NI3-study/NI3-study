@@ -24,10 +24,25 @@
   /** 원반 안에 들어갈 짧은 3자리 표기 (.056 / .347). */
   function dot3(v) {
     var s = v.toFixed(3);
+    // 반올림해서 0이면 부호를 떼어 −.000 이 찍히지 않게 한다.
+    if (/^-0\.?0*$/.test(s)) s = s.slice(1);
     if (s.indexOf('0.') === 0) return s.slice(1);
     if (s.indexOf('-0.') === 0) return MINUS + s.slice(2);
     return s.replace('-', MINUS);
   }
+
+  var SUP = ['⁰', '¹', '²', '³', '⁴', '⁵', '⁶', '⁷', '⁸', '⁹'];
+
+  /** 위첨자 표기 — (Lᵏ) 처럼 거듭제곱을 글자로 적는다. */
+  function sup(n) {
+    return String(n).split('').map(function (c) {
+      return SUP[+c] != null ? SUP[+c] : c;
+    }).join('');
+  }
+
+  /** 세는 말 — "막대가 2이다"가 아니라 "막대가 둘이다"로 적는다. */
+  var COUNT_KO = ['영', '하나', '둘', '셋', '넷', '다섯'];
+  function countKo(n) { return COUNT_KO[n] != null ? COUNT_KO[n] : String(n) + '개'; }
 
   function vlab(id) { return 'v' + sub(id); }
   function colMat(v) { return v.map(function (t) { return [t]; }); }
@@ -1075,147 +1090,396 @@
   }
 
   /* ══════════════════════════════════════════════════════════
-   * F6. 스펙트럼 — 02 §4 (#spectral)
+   * F6. 스펙트럼 다리 아홉 장 — 05
+   *   spec-eigen(S5) · spec-lambda(S6) · spec-basis(S7) · spec-filter(S8)
+   *   spec-hop(S10) · spec-cheby(S11) · spec-explode(S13)
+   *   spec-swap(S14) · spec-mu(S15)
+   *
+   * 모드 축 규약 — 모드마다 하나씩 붙는 양(λₖ, cₖ, g(λₖ), 모드별 거칢)은
+   * 정점 축 격자에 넣지 않는다. 축(drawAxis)이나 막대(drawBars)로 그리고
+   * 라벨은 u₁..u₄ 다. 고유벡터 자체는 정점 위의 값이므로 원반과 격자에 그린다.
    * ════════════════════════════════════════════════════════ */
 
-  function figSpectral() {
+  var LBADGE = 'G4 · L = I − D⁻¹ᐟ²AD⁻¹ᐟ²';
+  var ORD = ['①', '②', '③', '④', '⑤'];
+
+  function ulab(k) { return 'u' + sub(k + 1); }
+
+  function sumOf(a) {
+    return a.reduce(function (s, t) { return s + t; }, 0);
+  }
+
+  function vecText(v, d) {
+    return '(' + v.map(function (t) { return num(t, d); }).join(', ') + ')';
+  }
+
+  /** 간선을 따라 양 끝 부호가 갈리는 간선 수. */
+  function flipsOf(g, o, vec) {
+    return g.edges.filter(function (e) {
+      return vec[o.idx[e[0]]] * vec[o.idx[e[1]]] < 0;
+    }).length;
+  }
+
+  function signalOf(g) {
+    return g.nodes.map(function (id) { return g.x[id]; });
+  }
+
+  /**
+   * 자기 고리 숫자 상자를 간선 숫자 상자에서 비켜 놓는 가로 옮김.
+   * G4의 아래쪽 두 정점에서만 두 상자가 겹친다 — 좌표는 동결이므로 상자를 옮긴다.
+   */
+  function loopDx(id) {
+    return id === 3 ? -13 : 0;
+  }
+
+  /**
+   * 격자 두 상자를 하나의 테로 묶는다. 테 스타일은 .gnn-ring rect 를 그대로 쓴다.
+   * drawGrid 가 돌려주는 상자는 칸만 재고 행 이름표(x0 왼쪽)와 열 이름표(y0 위)는
+   * 그 밖에 있으므로, 왼쪽·위로 더 벌려 테가 이름표를 가로지르지 않게 한다.
+   */
+  function ringAround(root, api, a, b) {
+    var x0 = Math.min(a.x, b.x), y0 = Math.min(a.y, b.y);
+    var x1 = Math.max(a.x + a.w, b.x + b.w), y1 = Math.max(a.y + a.h, b.y + b.h);
+    var padL = 22, padT = 14, padR = 8, padB = 8;
+    var ring = api.S('g', { 'class': 'gnn-ring' }, root);
+    api.S('rect', {
+      x: x0 - padL, y: y0 - padT,
+      width: x1 - x0 + padL + padR, height: y1 - y0 + padT + padB, rx: 8
+    }, ring);
+  }
+
+  /* ── A1. spec-eigen — S5 ──────────────────────────────── */
+
+  function figSpecEigen() {
     var g = G.G4, o = gr.ops(g);
-    var x = g.nodes.map(function (id) { return g.x[id]; });
-    var eigL = la.jacobiEig(o.L);
-    var eigI = la.jacobiEig(o.Iplus);
-    var eigA = la.jacobiEig(o.Ahat);
-
-    function signChanges(vec) {
-      var n = 0;
-      g.edges.forEach(function (e) {
-        var a = vec[o.idx[e[0]]], b = vec[o.idx[e[1]]];
-        if (a * b < 0) n++;
-      });
-      return n;
-    }
-
+    var x = signalOf(g);
+    var Lx = la.matvec(o.L, x);
+    var eig = la.jacobiEig(o.L);
     var frames = [];
 
     frames.push({
       span: 'full',
-      vb: [0, 0, 424, 176],
-      title: '출발점은 정점 위의 숫자 한 벌이다',
-      desc: '그래프 신호 x = (1, 2, 3, 4). 원반 안의 숫자와 격자의 한 열은 같은 값이다. ' +
-            '고유벡터도 결국 이것의 한 종류다.',
-      caption: '그래프 신호 — 계보 전체가 쓰는 바로 그 칸이다. ' +
-               '아래 네 프레임은 이 자리에 특별한 신호를 넣은 것뿐이다.',
+      vb: [0, 0, 452, 176],
+      title: '① 우리 신호는 고유벡터가 아니다',
+      desc: '① 우리 신호 x = ' + vecText(x, 0) + '를 L에 통과시킨 결과 Lx = ' +
+            vecText(Lx, 3) + '을 x 옆에 나란히 놓은 것. 두 격자의 행 비율이 서로 달라서 ' +
+            'x는 이 조건을 만족하지 않는다 — x는 고유벡터가 아니다.',
+      caption: '① 두 열의 행 비율이 다르다. x는 통과해도 모양이 그대로인 신호가 아니다.',
       draw: function (root, api) {
         var gg = placed(root, api, 0, 12);
         var vals = {}, roles = {};
         g.nodes.forEach(function (id) { vals[id] = String(g.x[id]); roles[id] = 'active'; });
         api.drawGraph(gg, { graph: g, arrow: api.arrow, roles: roles, values: vals });
         api.drawGrid(root, {
-          x: 300, y: 46, cw: 52, ch: 24,
-          nums: colMat(x), text: colMat(x).map(function (r) { return [String(r[0])]; }),
-          rowLabels: rowLabelsOf(g), heading: 'x'
+          x: 300, y: 46, cw: 56, ch: 24,
+          nums: x.map(function (v, i) { return [v, Lx[i]]; }),
+          text: x.map(function (v, i) { return [num(v, 0), num(Lx[i], 3)]; }),
+          rowLabels: rowLabelsOf(g), colLabels: ['x', 'Lx'],
+          heading: '신호와 통과한 결과', negPattern: api.negPattern
         });
-        note(root, api, '채널이 하나인 격자', 300, 152);
       }
     });
 
-    eigL.values.forEach(function (lam, k) {
-      var vec = eigL.vectors[k];
-      var sc = signChanges(vec);
+    eig.values.forEach(function (lam, k) {
+      var u = eig.vectors[k];
+      var flips = flipsOf(g, o, u);
+      var lhs = la.dot(o.L[0], u);
+      var rhs = lam * u[0];
+      var tail = k === 0
+        ? ' — 가장 평평한 신호. 값은 상수가 아니라 √d 에 비례한다.'
+        : (flips === g.edges.length
+          ? ' — 가장 자주 어긋나는 신호. 세 간선에 모두 ' + MINUS + ' 가 붙는다.'
+          : '');
       frames.push({
         vb: [0, 0, 330, 176],
-        title: 'L의 고유벡터 u' + (k + 1) + ', λ = ' + lam.toFixed(2),
-        desc: '고유값 ' + lam.toFixed(2) + '의 고유벡터는 정점 위 패턴 ' +
-              g.nodes.map(function (id, i) {
-                return 'v' + id + ' ' + vec[i].toFixed(2);
-              }).join(', ') + ' 이고 간선을 따라 부호가 ' + sc + '번 바뀐다.',
-        caption: 'λ = ' + lam.toFixed(2) + ' · 부호 변화 ' + sc +
-                 '회 — ' + (sc === 0 ? '가장 평평한 모드' :
-                 (sc === g.edges.length ? '가장 진동하는 모드' : '중간 모드')),
+        title: ORD[k + 1] + ' ' + ulab(k) + ', λ = ' + fx(lam, 2),
+        desc: ORD[k + 1] + ' ' + ulab(k) + ' = ' + vecText(u, 3) + ', λ = ' + fx(lam, 2) +
+              ', 양 끝 부호가 갈리는 간선 ' + flips + '개. 그런 간선 위에는 ' + MINUS +
+              ' 를 적는다. 검산 한 줄은 본문이 L의 3행으로 한 검산을 1행으로 되풀이한 것이다 — ' +
+              '같은 수치를 두 곳에 인쇄하지 않기 위해서다.',
+        // tail 이 빈 프레임(k = 1, 2)에서 두 문장이 붙어 버린다. 마침표를 채워 끊는다.
+        caption: ORD[k + 1] + ' λ = ' + fx(lam, 2) + ' · 부호가 갈리는 간선 ' + flips + '개' +
+                 (tail || '.') + ' 검산 — L의 1행 · ' + ulab(k) + ' = ' + num(lhs, 3) + ' = λ × ' +
+                 ulab(k) + '의 1성분 ' + num(rhs, 3) + '.',
         draw: function (root, api) {
           var gg = placed(root, api, 0, 12);
-          var vals = {}, marks = {}, roles = {};
-          g.nodes.forEach(function (id, i) {
-            vals[id] = num(vec[i], 2);
-            marks[id] = vec[i] >= 0 ? '+' : '−';
-            roles[id] = 'active';
-          });
+          var vals = {}, roles = {};
+          g.nodes.forEach(function (id, i) { vals[id] = dot3(u[i]); roles[id] = 'active'; });
           api.drawGraph(gg, {
-            graph: g, arrow: api.arrow, roles: roles, values: vals, marks: marks,
-            edgeState: function (a, b) {
-              return vec[o.idx[a]] * vec[o.idx[b]] < 0 ? 'off' : 'on';
+            graph: g, arrow: api.arrow, roles: roles, values: vals,
+            edgeLabel: function (a, b) {
+              return u[o.idx[a]] * u[o.idx[b]] < 0 ? MINUS : null;
             }
           });
           api.drawGrid(root, {
             x: 262, y: 44, cw: 48, ch: 24,
-            nums: colMat(vec), text: colMat(vec).map(function (r) {
-              return [num(r[0], 2)];
-            }),
-            rowLabels: rowLabelsOf(g),
-            heading: 'u' + (k + 1), negPattern: api.negPattern
+            nums: colMat(u),
+            text: colMat(u).map(function (r) { return [num(r[0], 3)]; }),
+            rowLabels: rowLabelsOf(g), heading: ulab(k), negPattern: api.negPattern
           });
-          note(root, api, '점선 간선 = 부호가 바뀌는 자리', 14, 166);
+          note(root, api, '부호가 갈리는 간선 = ' + MINUS, 14, 166);
         }
       });
     });
 
-    // 프레임 경계마다 붙는 선택 배지 네 개. 화면에도, desc에도 같은 문장이 간다.
-    var CHOICES = [
-      ['(a) K = 1', '선택 — 층당 1-hop으로 묶고 층을 쌓는다'],
-      ['(b) θ₀′ = −θ₁′', '선택 — 파라미터를 줄이는 모델링 결정'],
-      ['(c) λ_max ≈ 2', '근사 — G4에서는 정확히 2, 일반 그래프에서는 근사'],
-      ['(d) I + D⁻¹ᐟ²AD⁻¹ᐟ² → Â', '연산자 교체 — 동치 변형이 아니다']
-    ];
+    return {
+      id: 'spec-eigen',
+      title: '통과해도 모양이 안 변하는 신호는 넷이다',
+      badge: LBADGE,
+      caption: '우리 신호는 이 조건을 만족하지 않는다. 뒤 네 프레임이 만족하는 넷이고, ' +
+               '각 프레임의 검산 한 줄이 그것을 한 행으로 보여 준다.',
+      falsify: '이 넷이 정말 모양이 안 변하는 신호라면 각 프레임의 검산 줄 좌변과 우변이 ' +
+               '같아야 한다. 네 프레임 모두 같다. ① 프레임에서만 두 열의 비율이 어긋난다.',
+      cols: 2,
+      frames: function () { return frames; }
+    };
+  }
+
+  /* ── A2. spec-lambda — S6 ─────────────────────────────── */
+
+  function figSpecLambda() {
+    var g = G.G4, o = gr.ops(g);
+    var eig = la.jacobiEig(o.L);
+
+    // 약분판 — 표시용 상수배. 소수점을 없애면 거칢이 정수 0, 3, 9, 12로 떨어진다.
+    var rows = eig.values.map(function (lam, k) {
+      var s = la.vscale(eig.vectors[k]);
+      var v = eig.vectors[k].map(function (t) { return t * s; });
+      var rough = la.dot(v, la.matvec(o.L, v));
+      var norm = la.dot(v, v);
+      return { lam: lam, v: v, rough: rough, norm: norm, quot: rough / norm };
+    });
+    var sqd = o.d.map(Math.sqrt);
+    var flat0 = eig.vectors[0];
+
+    var frames = [];
 
     frames.push({
       span: 'full',
-      vb: [0, 0, 452, 212],
-      title: '세 연산자의 고유값을 한 축에 겹쳐 본다',
-      desc: 'L의 고유값은 ' + eigL.values.map(function (v) { return v.toFixed(2); }).join(', ') +
-            ', I + D^-1/2 A D^-1/2 의 고유값은 ' +
-            eigI.values.map(function (v) { return v.toFixed(2); }).join(', ') +
-            ' 로 모두 [0, 2] 안에 있고, Â의 고유값은 ' +
-            eigA.values.map(function (v) { return v.toFixed(3); }).join(', ') +
-            ' 로 (−1, 1] 안으로 죄어진다. 유도의 네 선택 지점은 ' +
-            CHOICES.map(function (p) { return p[0] + ' ' + p[1]; }).join('; ') + '.',
-      caption: 'λ는 정점 축 객체가 아니므로 원반 위에도 격자 안에도 그리지 않는다. ' +
-               'renormalization은 눈금이 안쪽으로 죄어지는 한 장면이고, ' +
-               '유도 네 단계 중 (d)만 동치 변형이 아니다. ' +
-               'G4는 이분 그래프라 위 두 눈금이 같은 자리에 찍히지만 ' +
-               '대응하는 고유벡터는 서로 다르다.',
+      vb: [0, 0, 452, 168],
+      title: '① 네 방향의 거칢을 재면',
+      // 값 목록 뒤에 조사를 고정으로 붙이면 받침에 따라 "12과"가 된다. 괄호로 감싼다.
+      desc: '① 위 표의 계산을 네 줄로 그린 것. 줄마다 그 방향 하나를 맡고, 차수로 나눈 판에서 ' +
+            '잰 거칢(' + rows.map(function (r) { return num(r.rough, 0); }).join(', ') +
+            ')과 약분판에서 잰 크기의 제곱(모두 ' + num(rows[0].norm, 0) + ')과 몫 ' +
+            rows.map(function (r) { return num(r.quot, 2); }).join(', ') +
+            '을 늘어놓는다. 줄 이름은 ' + rows.map(function (r, k) { return ulab(k); }).join(', ') +
+            ' 이고 v₁..v₄ 가 아니다. 마지막 칸이 λ와 같다.',
+      caption: '① 몫 열이 λ 와 같다. 네 방향의 크기 제곱이 모두 같으므로 λ 의 순서가 곧 ' +
+               '거칢의 순서다. 여기 거칢은 차수로 나눈 판에서 잰 값이다.',
       draw: function (root, api) {
-        api.drawAxis(root, {
-          x: 132, y: 34, w: 300, min: -1.15, max: 2.15, rowH: 26,
-          rows: [
-            {
-              label: 'L',
-              marks: eigL.values.map(function (v) {
-                return { v: v, label: v.toFixed(2) };
-              })
-            },
-            {
-              label: 'I + D⁻¹ᐟ²AD⁻¹ᐟ²',
-              marks: eigI.values.map(function (v) {
-                return { v: v, label: v.toFixed(2), shape: 'square' };
-              })
-            },
-            {
-              label: 'Â = D̃⁻¹ᐟ²ÃD̃⁻¹ᐟ²',
-              marks: eigA.values.map(function (v) {
-                return { v: v, label: v.toFixed(2), shape: 'tri' };
-              })
-            }
-          ],
-          ticks: [-1, 0, 1, 2].map(function (v) {
-            return { v: v, label: String(v) };
-          }),
-          // SVG 글자는 줄바꿈이 없다. 긴 문장은 프레임 캡션(HTML)이 맡는다.
-          caption: '위 두 눈금은 같은 자리 — 고유벡터는 다르다'
+        heading(root, api, '약분판에서 잰 거칢 · 크기의 제곱 · 몫', 14, 20);
+        var cx = [126, 246, 350];
+        note(root, api, '방향', 34, 44);
+        note(root, api, '거칢 vᵀLv', cx[0], 44);
+        // u₁..u₄ 자체의 크기 제곱은 1이다. 이 열의 6은 약분판에서 잰 값이므로 열 머리에 밝힌다.
+        note(root, api, '크기의 제곱 (약분판)', cx[1], 44);
+        note(root, api, '몫', cx[2], 44);
+        rows.forEach(function (r, k) {
+          var y = 68 + k * 20;
+          note(root, api, ulab(k), 34, y);
+          note(root, api, num(r.rough, 0), cx[0], y);
+          note(root, api, num(r.norm, 0), cx[1], y);
+          note(root, api, num(r.quot, 2), cx[2], y);
         });
-        CHOICES.forEach(function (p, i) {
-          api.S('text', {
-            'class': 'gnn-badge__k' + (i === 3 ? ' gnn-badge__k--warn' : ''),
-            x: 18, y: 162 + i * 13, text: p[0] + '  ' + p[1]
-          }, root);
+      }
+    });
+
+    frames.push({
+      span: 'full',
+      vb: [0, 0, 452, 168],
+      title: '② 고유값은 별도 축 위에만 산다',
+      desc: '② 0에서 2까지의 1차원 축 한 줄에 네 눈금 ' +
+            eig.values.map(function (v) { return fx(v, 2); }).join(', ') +
+            '을 찍고, 눈금마다 그 방향에서 부호가 바뀌는 간선의 수 ' +
+            eig.vectors.map(function (v) { return flipsOf(g, o, v); }).join(', ') +
+            '을 붙인 것. 축 아래 한 줄: λ = 0 방향의 값은 ' + vecText(flat0, 3) +
+            '이고 √d = ' + vecText(sqd, 3) + '에 비례한다.',
+      caption: '② 눈금이 왼쪽에 있을수록 이웃과 덜 어긋난다.',
+      draw: function (root, api) {
+        heading(root, api, 'λ 축 — 눈금 위 숫자는 부호가 바뀌는 간선의 수', 14, 20);
+        api.drawAxis(root, {
+          x: 96, y: 62, w: 300, min: -0.15, max: 2.15,
+          rows: [{
+            label: 'λ',
+            marks: eig.values.map(function (lam, k) {
+              return { v: lam, label: String(flipsOf(g, o, eig.vectors[k])) };
+            })
+          }],
+          ticks: eig.values.map(function (lam) {
+            return { v: lam, label: fx(lam, 2) };
+          }),
+          caption: 'λ 축'
+        });
+        note(root, api, 'λ = 0 방향의 값 ' + vecText(flat0, 3), 24, 124);
+        note(root, api, '√d = ' + vecText(sqd, 3) + ' 에 비례한다', 24, 142);
+      }
+    });
+
+    return {
+      id: 'spec-lambda',
+      title: 'λ는 거칢을 크기의 제곱으로 나눈 값이다',
+      badge: LBADGE,
+      caption: 'λ 는 어떤 정점의 값도 아니다. 그래서 원반에도 격자에도 넣지 않고 축 위에만 ' +
+               '그린다. 이 축이 S13·S15에서 그대로 다시 나온다.',
+      falsify: 'λ 가 거칢 눈금이 아니라면 ① 마지막 열과 ② 축의 눈금이 어긋나야 한다. ' +
+               '네 줄이 모두 일치한다.',
+      cols: 1,
+      frames: function () { return frames; }
+    };
+  }
+
+  /* ── A3. spec-basis — S7 ──────────────────────────────── */
+
+  function figSpecBasis() {
+    var g = G.G4, o = gr.ops(g);
+    var x = signalOf(g);
+    var eig = la.jacobiEig(o.L);
+    // vectors[k] 가 k번째 고유벡터이므로 배열 그대로가 Uᵀ다. c = Uᵀx 한 줄.
+    var c = flat(la.matmul(eig.vectors, colMat(x)));
+    var f4 = function (v) { return fx(v, 4); };
+    var sq2 = c.map(function (t) { return t * t; });
+    var lsq = eig.values.map(function (l, k) { return l * sq2[k]; });
+    var sumSq = sumOf(sq2), sumLsq = sumOf(lsq);
+    var labels = c.map(function (t, k) { return ulab(k); });
+
+    var frames = [];
+
+    frames.push({
+      span: 'full',
+      vb: [0, 0, 452, 182],
+      title: '① 쪼개면 네 숫자가 나온다',
+      desc: '① 분해 — 왼쪽에 신호 x의 격자 ' + vecText(x, 0) + ', 오른쪽에 네 모드의 격자 ' +
+            '네 열, 그 사이에 계수 c = ' + vecText(c, 3) + '를 0선 기준 막대 네 개로 그린 것. ' +
+            '격자의 행 순서는 v1, v2, v3, v4로 고정이고 λ 순으로 재정렬하지 않는다. ' +
+            '막대는 정점 축 위의 양이 아니므로 ' + labels.join(', ') + ' 로 이름을 단다.',
+      caption: '① 막대는 정점 축 위의 양이 아니므로 ' + labels[0] + '..' + labels[3] +
+               ' 로 이름을 단다. 오른쪽 격자의 행은 λ 순으로 재정렬하지 않는다.',
+      draw: function (root, api) {
+        heading(root, api, 'x 를 네 모드로 쪼갠다 — 계수 c = Uᵀx', 14, 20);
+        api.drawGrid(root, {
+          x: 30, y: 46, cw: 36, ch: 26,
+          nums: colMat(x), text: colMat(x).map(function (r) { return [num(r[0], 0)]; }),
+          rowLabels: rowLabelsOf(g), colLabels: ['x']
+        });
+        api.drawBars(root, {
+          x: 110, y: 46, w: 146, rowH: 26, zero: 180, scale: 9,
+          values: c, labels: labels,
+          text: c.map(function (t) { return num(t, 4); })
+        });
+        api.drawGrid(root, {
+          x: 280, y: 46, cw: 40, ch: 26,
+          nums: g.nodes.map(function (id, i) {
+            return eig.vectors.map(function (u) { return u[i]; });
+          }),
+          text: g.nodes.map(function (id, i) {
+            return eig.vectors.map(function (u) { return num(u[i], 3); });
+          }),
+          rowLabels: rowLabelsOf(g), colLabels: labels, negPattern: api.negPattern
+        });
+      }
+    });
+
+    frames.push({
+      span: 'full',
+      vb: [0, 0, 452, 182],
+      title: '② 두 합계가 맞는가',
+      desc: '② 검산 — 막대 두 벌. 윗벌은 계수의 제곱 (' + sq2.map(f4).join(', ') + ')이고 합이 ' +
+            f4(sumSq) + '이며 x의 제곱합 30과 같다. 아랫벌은 거기에 λ를 곱한 (' +
+            lsq.map(f4).join(', ') + ')이고 합이 ' + f4(sumLsq) +
+            '이며 S4의 거칢과 같다. 아랫벌에서 λ = 1.50 막대가 아랫벌 합의 ' +
+            fx(lsq[2] / sumLsq * 100, 1) + '%다. 윗벌에서 같은 막대는 30의 ' +
+            fx(sq2[2] / sumSq * 100, 1) + '%이고 가장 긴 막대는 ' + f4(sq2[0]) + '(' +
+            fx(sq2[0] / sumSq * 100, 1) + '%)다.',
+      caption: '② 윗벌 합은 x 의 제곱합과 같고, 아랫벌 합은 S4의 거칢과 같다. 아랫벌에서 ' +
+               'λ = 1.50 막대가 아랫벌 합의 ' + fx(lsq[2] / sumLsq * 100, 1) +
+               '%다 — 윗벌에서 같은 막대는 ' + fx(sq2[2] / sumSq * 100, 1) + '%뿐이다.',
+      draw: function (root, api) {
+        note(root, api, '윗벌 — 계수의 제곱 cₖ²', 14, 28);
+        api.drawBars(root, {
+          x: 96, y: 34, w: 180, rowH: 16, zero: 96, scale: 8,
+          values: sq2, labels: labels, text: sq2.map(f4)
+        });
+        note(root, api, '합 ' + f4(sumSq), 322, 66);
+        note(root, api, '아랫벌 — 거기에 λ 를 곱한 값', 14, 106);
+        api.drawBars(root, {
+          x: 96, y: 112, w: 180, rowH: 16, zero: 96, scale: 8,
+          values: lsq, labels: labels, text: lsq.map(f4)
+        });
+        note(root, api, '합 ' + f4(sumLsq), 322, 144);
+      }
+    });
+
+    return {
+      id: 'spec-basis',
+      title: '한 신호가 네 방향의 합으로',
+      badge: LBADGE,
+      caption: '계수 cₖ 는 모드마다 하나씩 붙는 양이라 격자가 아니라 막대다. ' +
+               '왼쪽 격자의 행 순서는 정점 순서로 고정이다.',
+      falsify: '네 방향이 서로 수직이 아니라면 ②의 두 합계 중 적어도 하나가 어긋나야 한다. ' +
+               '둘 다 맞는다.',
+      cols: 1,
+      frames: function () { return frames; }
+    };
+  }
+
+  /* ── A4. spec-filter — S8 ─────────────────────────────── */
+
+  function figSpecFilter() {
+    var g = G.G4, o = gr.ops(g);
+    var x = signalOf(g);
+    var eig = la.jacobiEig(o.L);
+    var c = flat(la.matmul(eig.vectors, colMat(x)));
+    var labels = c.map(function (t, k) { return ulab(k); });
+
+    // g(λ) = 1 − λ. 배수표를 곱하고 되돌린다 — 되돌리기는 Σ cₖ g(λₖ) uₖ 다.
+    var gain = eig.values.map(function (l) { return 1 - l; });
+    function rebuild(coef) {
+      return g.nodes.map(function (id, i) {
+        return coef.reduce(function (s, t, k) { return s + t * eig.vectors[k][i]; }, 0);
+      });
+    }
+    var gc = c.map(function (t, k) { return t * gain[k]; });
+    var top = rebuild(gc);
+    var bottom = la.matvec(o.Ssym, x);
+
+    // 배수표를 (1, 0, 0, 0)으로 바꾸면 가장 평평한 모드 하나만 남는다.
+    var only = rebuild(c.map(function (t, k) { return k === 0 ? t : 0; }));
+    var sqd = o.d.map(Math.sqrt);
+    var ratio = only[0] / sqd[0];
+
+    var frames = [];
+
+    frames.push({
+      span: 'full',
+      vb: [0, 0, 452, 150],
+      title: '① 위 경로 — 쪼개고, 곱하고, 되돌린다',
+      desc: '① 위 경로 — x의 격자에서 출발해 계수 막대 ' + vecText(c, 3) +
+            '로 쪼개고, 막대마다 배수 ' + gain.map(function (v) { return num(v, 2); }).join(', ') +
+            '을 옆에 적어 곱한 뒤 ' + vecText(gc, 3) + ' 막대를 얻고, 되돌려 격자 ' +
+            vecText(top, 3) + '를 얻는다. 고유분해를 쓴다.',
+      caption: '① 배수는 막대를 한 벌 더 그리지 않고 계수 막대 옆에 값으로 적는다. ' +
+               '막대 두 벌은 모드 축 위의 양이고 격자 두 벌은 정점 축 위의 양이다.',
+      draw: function (root, api) {
+        heading(root, api, 'x → c → g(λ)·c → 되돌린 값', 14, 18);
+        api.drawGrid(root, {
+          x: 26, y: 40, cw: 32, ch: 24,
+          nums: colMat(x), text: colMat(x).map(function (r) { return [num(r[0], 0)]; }),
+          rowLabels: rowLabelsOf(g), colLabels: ['x']
+        });
+        api.drawBars(root, {
+          x: 80, y: 40, w: 125, rowH: 24, zero: 140, scale: 6,
+          values: c, labels: labels, text: c.map(function (t) { return num(t, 3); }),
+          notes: gain.map(function (v) { return '× ' + num(v, 2); })
+        });
+        api.drawBars(root, {
+          x: 266, y: 40, w: 108, rowH: 24, zero: 312, scale: 6,
+          values: gc, labels: labels, text: gc.map(function (t) { return num(t, 3); })
+        });
+        api.drawGrid(root, {
+          x: 392, y: 40, cw: 44, ch: 24,
+          nums: colMat(top), text: colMat(top).map(function (r) { return [num(r[0], 3)]; }),
+          colLabels: ['되돌림']
         });
       }
     });
@@ -1223,57 +1487,527 @@
     frames.push({
       span: 'full',
       vb: [0, 0, 452, 150],
-      title: '반복하면 어느 모드가 먼저 죽는가',
-      desc: 'Â를 k번 적용하면 각 모드의 진폭은 |μ|^k로 줄어든다. ' +
-            eigA.values.map(function (v) {
-              return 'μ=' + v.toFixed(3) + '는 k=8에서 ' +
-                     Math.pow(Math.abs(v), 8).toFixed(4);
-            }).join(', ') + '. 고유값 1인 모드만 살아남는다.',
-      caption: '살아남는 모드가 √d̃ 다. 이것이 오버스무딩의 메커니즘이고, ' +
-               '(d)가 왜 동치가 아닌지의 근거이기도 하다.',
+      title: '② 아래 경로 — 이웃을 한 번 섞는다',
+      desc: '② 아래 경로 — 같은 x의 격자에서 출발해 G4 위에서 계수 ' +
+            dot3(o.Ssym[0][1]) + ' 과 ' + dot3(o.Ssym[0][2]) +
+            ' 으로 이웃을 한 번 섞어 같은 격자 ' + vecText(bottom, 3) +
+            '를 얻는다. 고유분해를 쓰지 않는다.',
+      caption: '② 고유분해가 한 번도 등장하지 않는다. 계수는 간선 위에만 있다.',
       draw: function (root, api) {
-        heading(root, api, 'Â를 k번 반복한 뒤 남는 진폭 |μ|ᵏ', 18, 20);
-        var order = eigA.values.slice().sort(function (a, b) {
-          return Math.abs(b) - Math.abs(a);
+        heading(root, api, 'x → 간선 계수로 한 번 섞기 → 결과', 14, 18);
+        api.drawGrid(root, {
+          x: 24, y: 40, cw: 36, ch: 24,
+          nums: colMat(x), text: colMat(x).map(function (r) { return [num(r[0], 0)]; }),
+          rowLabels: rowLabelsOf(g), colLabels: ['x']
         });
-        api.drawAxis(root, {
-          x: 92, y: 40, w: 330, min: 0, max: 1.06, rowH: 22,
-          rows: order.map(function (mu) {
-            if (Math.abs(mu) > 0.99) {
-              return {
-                label: 'μ = ' + mu.toFixed(3),
-                marks: [{ v: 1, label: '모든 k' }]
-              };
+        var gg = placed(root, api, 90, 8);
+        var roles = {};
+        g.nodes.forEach(function (id) { roles[id] = 'active'; });
+        api.drawGraph(gg, {
+          graph: g, arrow: api.arrow, roles: roles,
+          edgeLabel: function (a, b) { return dot3(o.Ssym[o.idx[a]][o.idx[b]]); },
+          edgeWidth: function (a, b) { return o.Ssym[o.idx[a]][o.idx[b]]; }
+        });
+        api.drawGrid(root, {
+          x: 384, y: 40, cw: 44, ch: 24,
+          nums: colMat(bottom),
+          text: colMat(bottom).map(function (r) { return [num(r[0], 3)]; }),
+          colLabels: ['Sx']
+        });
+      }
+    });
+
+    frames.push({
+      span: 'full',
+      vb: [0, 0, 452, 166],
+      title: '③ 두 끝이 같은가',
+      // "두 열의 비"는 한 열 안의 행끼리 비(√2 : √2 : 1 : 1)와 두 열을 행마다 나눈 값
+      // (네 행 모두 1.874)을 동시에 가리켜 중의적이다. 낱말을 갈라 쓴다.
+      desc: '③ 두 경로의 끝 격자를 나란히 놓고 같은 테로 묶은 것. 네 자리 소수까지 같다. ' +
+            '그 옆에 배수표만 (1, 0, 0, 0)으로 바꾼 결과 격자 ' + vecText(only, 3) +
+            '를 √d 격자 ' + vecText(sqd, 3) + '와 나란히 두어, 결과 열이 √d 열과 같은 모양 ' +
+            '√2 : √2 : 1 : 1 임을 보인다.',
+      caption: '③ 두 끝 격자가 네 자리 소수까지 같다. 오른쪽 두 격자는 배수표를 하나만 ' +
+               '남겼을 때인데, 두 격자를 행마다 나눈 값이 네 행 모두 ' + fx(ratio, 3) +
+               ' 로 같다 — 결과 열이 √d 에 정확히 비례한다는 뜻이다.',
+      draw: function (root, api) {
+        var a = api.drawGrid(root, {
+          x: 62, y: 50, cw: 48, ch: 24,
+          nums: colMat(top), text: colMat(top).map(function (r) { return [num(r[0], 4)]; }),
+          rowLabels: rowLabelsOf(g), colLabels: ['위 경로']
+        });
+        var b = api.drawGrid(root, {
+          x: 118, y: 50, cw: 48, ch: 24,
+          nums: colMat(bottom),
+          text: colMat(bottom).map(function (r) { return [num(r[0], 4)]; }),
+          colLabels: ['아래 경로']
+        });
+        ringAround(root, api, a, b);
+        note(root, api, '배수표를 (1, 0, 0, 0) 으로 바꾸면', 262, 34);
+        api.drawGrid(root, {
+          x: 266, y: 50, cw: 52, ch: 24,
+          nums: colMat(only), text: colMat(only).map(function (r) { return [num(r[0], 4)]; }),
+          colLabels: ['결과']
+        });
+        api.drawGrid(root, {
+          x: 332, y: 50, cw: 52, ch: 24,
+          nums: colMat(sqd), text: colMat(sqd).map(function (r) { return [num(r[0], 4)]; }),
+          colLabels: ['√d']
+        });
+        note(root, api, '행마다 나눈 값이 네 행 모두 ' + fx(ratio, 3) + ' 다', 262, 160);
+      }
+    });
+
+    return {
+      id: 'spec-filter',
+      title: '모드에서 곱하기가 정점에서 이웃 섞기다',
+      badge: LBADGE,
+      caption: '위 경로는 고유분해를 쓰고 아래 경로는 쓰지 않는데 끝이 같다. ' +
+               '이것이 식 (3)이 정의하는 전부다.',
+      falsify: '식 (3)이 정점 축 연산과 무관한 별개의 정의라면 ③의 두 끝 격자가 달라야 한다. ' +
+               '네 자리 소수까지 같다.',
+      cols: 1,
+      frames: function () { return frames; }
+    };
+  }
+
+  /* ── A5. spec-hop — S10 ───────────────────────────────── */
+
+  function figSpecHop() {
+    var g = G.G4, o = gr.ops(g);
+    var center = 3, ci = o.idx[center];
+    var dist = gr.hopDistance(g, center);
+
+    var frames = [1, 2, 3].map(function (k, fi) {
+      var row = la.matpow(o.L, k)[ci];
+      var inside = g.nodes.filter(function (id) { return dist[id] <= k; });
+      var far = row[o.idx[4]];
+      return {
+        span: 'full',
+        vb: [0, 0, 452, 168],
+        title: 'k = ' + k + ' — 테 안 ' + inside.length + '개',
+        desc: ORD[fi] + ' k = ' + k + ' 프레임. G4 위에 ' + k +
+              '걸음 이내 정점을 감싸는 테를 그리고, 그 옆에 (L' + sup(k) +
+              ')의 3행을 격자 한 줄로 적는다. 테 안은 ' +
+              inside.map(function (id) { return 'v' + id; }).join(', ') + ' 이고 3행은 ' +
+              vecText(row, 3) + ' 이다. 테 밖 칸은 0이다.',
+        caption: ORD[fi] + ' 테 안 ' + inside.length + '개 · (L' + sup(k) + ')₃₄ = ' +
+                 num(far, 3) + (Math.abs(far) < 1e-9
+                   ? ' — v₄ 칸이 아직 0이다.'
+                   : ' — 여기서 처음 0이 아니게 된다.'),
+        draw: function (root, api) {
+          // 테가 정점 이름표(원반 아래)와 걸음표(원반 위)를 가로지르지 않도록
+          // pad 를 16으로 벌리고, 그만큼 그래프를 오른쪽으로 8 옮겨 테 왼쪽을 vb 안에 둔다.
+          var gg = placed(root, api, 8, 20);
+          var roles = {}, marks = {};
+          g.nodes.forEach(function (id) {
+            var on = dist[id] <= k;
+            roles[id] = id === center ? 'focus' : (on ? 'active' : 'out');
+            marks[id] = on ? (dist[id] + 'h') : '';
+          });
+          api.drawGraph(gg, {
+            graph: g, arrow: api.arrow, roles: roles, marks: marks,
+            rings: [{ members: inside, pad: 16, label: 'k ≤ ' + k }],
+            edgeState: function (a, b) {
+              return (dist[a] <= k && dist[b] <= k) ? 'on' : 'off';
             }
-            return {
-              label: 'μ = ' + mu.toFixed(3),
-              marks: [1, 2, 4, 8].map(function (k) {
-                // 8개 눈금이 0 근처에 뭉치므로 양 끝만 라벨을 단다.
-                return {
-                  v: Math.pow(Math.abs(mu), k),
-                  label: (k === 1 || k === 8) ? 'k=' + k : null
-                };
-              })
-            };
+          });
+          api.drawGrid(root, {
+            x: 276, y: 84, cw: 36, ch: 24,
+            nums: [row], text: [row.map(function (v) { return dot3(v); })],
+            colLabels: rowLabelsOf(g),
+            heading: 'k = ' + k + ' · L' + sup(k) + '의 3행', negPattern: api.negPattern
+          });
+        }
+      };
+    });
+
+    return {
+      id: 'spec-hop',
+      title: 'K차 다항식은 K걸음 밖을 보지 않는다',
+      badge: LBADGE,
+      caption: '테는 수용 영역(이진 집합)이고 격자 한 줄은 실제 계수다. ' +
+               '두 집합이 같은 프레임이 셋이다.',
+      falsify: 'K차 다항식이 K걸음 밖을 본다면 k = 2 프레임의 v4 칸이 0이 아니어야 한다. ' +
+               '0이다. 그리고 k = 3에서 처음으로 0이 아니게 된다.',
+      cols: 1,
+      frames: function () { return frames; }
+    };
+  }
+
+  /* ── A6. spec-cheby — S11 ─────────────────────────────── */
+
+  function figSpecCheby() {
+    var g = G.G4, o = gr.ops(g);
+    var T = la.cheby(o.Ltilde, 2);
+    var eigT = la.jacobiEig(o.Ltilde);
+    var lm = gr.ops(G.G4circ).lmax;
+    var names = ['T₀(L̃) = I', 'T₁(L̃) = L̃', 'T₂(L̃) = 2L̃² − I'];
+    var scale = 1;
+
+    function frameK(k) {
+      var M = T[k];
+      var loops = {};
+      g.nodes.forEach(function (id) {
+        loops[id] = { label: dot3(M[o.idx[id]][o.idx[id]]), dx: loopDx(id),
+                      width: Math.abs(M[o.idx[id]][o.idx[id]]) / scale };
+      });
+      var edgeVal = function (a, b) { return M[o.idx[a]][o.idx[b]]; };
+      var full = k === 2;
+      var rescaled = eigT.values;
+
+      return {
+        span: full ? 'full' : undefined,
+        vb: full ? [0, 0, 452, 206] : [0, 0, 330, 176],
+        title: ORD[k] + ' ' + names[k],
+        desc: ORD[k] + ' ' + names[k] + ' — 자기 고리가 ' +
+              g.nodes.map(function (id) {
+                return 'v' + id + ' ' + num(M[o.idx[id]][o.idx[id]], 3);
+              }).join(', ') + ' 이고 1-hop 간선 (1,2), (1,3), (2,4)는 ' +
+              g.edges.map(function (e) { return num(edgeVal(e[0], e[1]), 3); }).join(', ') +
+              ' 이다.' + (full
+                ? ' 그래서 2-hop 쌍 (1,4)와 (2,3)에 ' + num(M[0][3], 3) +
+                  ' 이 붙고, 그래프에 없던 쌍을 잇는 점찍은 현 두 개가 등장한다. ' +
+                  '아래에는 재척도된 눈금 ' +
+                  rescaled.map(function (v) { return num(v, 2); }).join(', ') +
+                  ' 을 1차원 축 한 줄로 찍는다.'
+                : ' 선 굵기는 계수 크기에 맞춘다.'),
+        caption: full
+          ? ORD[k] + ' 1-hop 세 쌍이 전부 0이고 2-hop 두 쌍에 ' + dot3(M[0][3]) +
+            ' 이 붙는다. 짝수 차수 항은 홀수 거리에 닿지 않는다 — 그림이 틀린 것이 아니다. ' +
+            '점찍은 현 두 개는 배선에 없는데 계수에는 값이 있는 쌍이다. 그리고 G4○(= G4 + v₅, ' +
+            '간선 (3,5)(4,5))에서는 λ_max = ' + fx(lm, 3) + ' 라 2/λ_max = ' +
+            fx(2 / lm, 3) + ' 이다. 논문이 λ_max ≈ 2 근사를 쓰는 것은 K = 1 로 자른 뒤(§2.2)이고, ' +
+            '식 (5)의 Chebyshev 모델은 정확한 λ_max 를 쓴다.'
+          : (k === 0
+            ? ORD[k] + ' 0차는 아무도 섞지 않는다. 자기 고리만 ' +
+              num(M[0][0], 3) + ' 이다.'
+            : ORD[k] + ' 1차는 1-hop 간선에만 값을 준다. λ_max = 2 인 G4에서 L̃ = L − I = −S 다.'),
+        draw: function (root, api) {
+          var gg = placed(root, api, full ? 30 : 0, full ? 16 : 34);
+          var roles = {};
+          g.nodes.forEach(function (id) { roles[id] = 'active'; });
+          api.drawGraph(gg, {
+            graph: g, arrow: api.arrow, roles: roles, selfLoops: loops,
+            edgeLabel: function (a, b) { return dot3(edgeVal(a, b)); },
+            edgeWidth: function (a, b) { return Math.abs(edgeVal(a, b)) / scale; },
+            extraEdges: full ? [
+              { a: 1, b: 4, label: dot3(M[o.idx[1]][o.idx[4]]),
+                width: Math.abs(M[o.idx[1]][o.idx[4]]) / scale },
+              // 2–3 현의 숫자 상자는 기본 자리(현의 중점에서 수직 9)가 v1의
+              // 이름표 위에 얹힌다. 반대쪽으로 22 띄워 두 현이 교차하는 아래쪽
+              // 빈자리에 둔다 — 값도 현의 좌표도 그대로다.
+              { a: 2, b: 3, label: dot3(M[o.idx[2]][o.idx[3]]),
+                width: Math.abs(M[o.idx[2]][o.idx[3]]) / scale, labelOff: -22 }
+            ] : null
+          });
+          if (full) {
+            api.drawAxis(root, {
+              x: 96, y: 164, w: 300, min: -1.15, max: 1.15,
+              rows: [{ label: 'L̃', marks: rescaled.map(function (v) { return { v: v }; }) }],
+              ticks: rescaled.map(function (v) { return { v: v, label: num(v, 2) }; }),
+              caption: '재척도 눈금'
+            });
+          }
+        }
+      };
+    }
+
+    var frames = [0, 1, 2].map(frameK);
+
+    return {
+      id: 'spec-cheby',
+      title: '기성품 세 벌의 계수표',
+      badge: 'G4 · L̃ = (2/λ_max)L − I',
+      caption: 'T₀ 는 아무도 섞지 않고, T₁ 은 1-hop만, T₂ 는 1-hop을 건너뛴다. ' +
+               '셋째 프레임이 왜 고장이 아닌지는 본문이 미리 밝혀 둔다.',
+      falsify: '"K차 다항식 = K걸음 전부"가 맞다면 ③에서 1-hop 세 간선이 0이 아니어야 한다. ' +
+               '셋 다 0이다.',
+      cols: 2,
+      frames: function () { return frames; }
+    };
+  }
+
+  /* ── A7. spec-explode — S13 ───────────────────────────── */
+
+  function figSpecExplode() {
+    var g = G.G4, o = gr.ops(g);
+    var x = signalOf(g);
+    var KS = [0, 1, 4, 8];
+    var DEC = { 0: 0, 1: 2, 4: 1, 8: 0 };
+    var res = KS.map(function (k) { return la.matvec(la.matpow(o.Iplus, k), x); });
+    var eigL = la.jacobiEig(o.L);
+    var eigI = la.jacobiEig(o.Iplus);
+    var top = eigI.values[eigI.values.length - 1];
+    // 가장 평평한 모드는 L의 λ 최솟값 방향이다. I + S = 2I − L 이므로 같은 방향이
+    // 그쪽에서는 가장 큰 눈금에 붙는다 — 그 자리를 두 줄에서 각각 표시한다.
+    var flatVec = eigL.vectors[0];
+    function isFlat(vec) {
+      return vec.every(function (t, i) { return Math.abs(t - flatVec[i]) < 1e-9; });
+    }
+    function markLabel(eig, k) {
+      return fx(eig.values[k], 2) + (isFlat(eig.vectors[k]) ? ' 평평' : '');
+    }
+    var frames = [];
+
+    frames.push({
+      span: 'full',
+      vb: [0, 0, 452, 160],
+      title: '① 한 번은 멀쩡하고 여덟 번은 아니다',
+      desc: '① 반복 — G4 위에 I + S의 계수를 적은 그림(자기 고리 넷 다 ' +
+            num(o.Iplus[0][0], 3) + ', 간선 ' + num(o.Iplus[0][1], 3) + ' / ' +
+            num(o.Iplus[0][2], 3) + ' / ' + num(o.Iplus[1][3], 3) +
+            ')과 그 오른쪽에 k = 0, 1, 4, 8의 결과 격자 네 개. ' +
+            res.map(function (v, i) { return vecText(v, DEC[KS[i]]); }).join(' → ') +
+            '로 자릿수가 늘어난다.',
+      caption: '① 원반 위 계수 가운데 1을 넘는 것이 하나도 없는데 결과의 자릿수가 ' +
+               '세 번 늘어난다.',
+      draw: function (root, api) {
+        var gg = placed(root, api, 0, 14);
+        var roles = {}, loops = {};
+        g.nodes.forEach(function (id) {
+          roles[id] = 'active';
+          loops[id] = { label: dot3(o.Iplus[o.idx[id]][o.idx[id]]), dx: loopDx(id),
+                        width: o.Iplus[o.idx[id]][o.idx[id]] };
+        });
+        api.drawGraph(gg, {
+          graph: g, arrow: api.arrow, roles: roles, selfLoops: loops,
+          edgeLabel: function (a, b) { return dot3(o.Iplus[o.idx[a]][o.idx[b]]); },
+          edgeWidth: function (a, b) { return o.Iplus[o.idx[a]][o.idx[b]]; }
+        });
+        KS.forEach(function (k, i) {
+          api.drawGrid(root, {
+            x: 256 + i * 50, y: 44, cw: 44, ch: 24,
+            text: colMat(res[i]).map(function (r) { return [num(r[0], DEC[k])]; }),
+            colLabels: ['k = ' + k],
+            rowLabels: i === 0 ? rowLabelsOf(g) : null
+          });
+        });
+      }
+    });
+
+    frames.push({
+      span: 'full',
+      vb: [0, 0, 452, 160],
+      title: '② 눈금은 뒤집히기만 했다',
+      desc: '② 눈금 — 1차원 축 한 줄에 두 행을 겹친다. 위 행은 L의 눈금 ' +
+            eigL.values.map(function (v) { return fx(v, 2); }).join(', ') +
+            ', 아래 행은 I + S의 눈금 ' +
+            eigI.values.map(function (v) { return fx(v, 2); }).join(', ') +
+            '이다. G4에서는 네 눈금 위치까지 같고, 다만 가장 평평한 모드가 L에서는 ' +
+            '왼쪽 끝 0에, I + S에서는 오른쪽 끝 2에 있다. 두 줄에서 그 눈금 하나에만 ' +
+            '"평평" 표시를 붙인다. 축 오른쪽 끝에 ' +
+            '2의 8제곱 = ' + num(Math.pow(top, 8), 0) + '을 적는다.',
+      caption: '② I + S = 2I − L 이므로 두 연산자의 고유벡터 집합은 완전히 같고 눈금만 ' +
+               'λ ↦ 2 − λ 로 뒤집힌다. G4에서는 눈금 위치까지 같은데, 그것은 G4가 양쪽으로 ' +
+               '갈리는 그래프여서다 — 일반적으로 같은 것은 고유벡터이고 눈금은 통째로 ' +
+               '옮겨 간다. 가장 평평한 모드가 왼쪽 끝에서 오른쪽 끝으로 갔다.',
+      draw: function (root, api) {
+        heading(root, api, '같은 네 눈금, 반대 끝의 평평한 모드', 14, 24);
+        // 줄 이름은 대본 A7이 적은 대로 L / I + S 다. 짧게 두어야 축을 넓게 쓸 수 있고,
+        // 그래야 "평평" 표시가 이웃 눈금 라벨과 겹치지 않는다.
+        var ax = api.drawAxis(root, {
+          x: 96, y: 52, w: 300, min: -0.15, max: 2.15, rowH: 28,
+          rows: [
+            { label: 'L', marks: eigL.values.map(function (v, k) {
+              return { v: v, label: markLabel(eigL, k) }; }) },
+            { label: 'I + S', marks: eigI.values.map(function (v, k) {
+              return { v: v, label: markLabel(eigI, k), shape: 'square' }; }) }
+          ],
+          ticks: [{ v: 0, label: '0' }, { v: 1, label: '1' }, { v: 2, label: '2' }],
+          // 캡션 슬롯은 축 왼쪽 시작점에 찍힌다. 위치를 주장하는 문구를 여기 두면
+          // 정확히 반대쪽을 가리키게 된다 — 중립적인 축 이름만 남긴다.
+          caption: 'λ 축'
+        });
+        // 축 오른쪽 끝 글자도 caption(왼쪽 시작점)에 넣을 수 없다.
+        note(root, api, '2⁸ = ' + num(Math.pow(top, 8), 0), ax.at(top) + 10, 90);
+      }
+    });
+
+    return {
+      id: 'spec-explode',
+      title: '계수는 1을 안 넘는데 결과는 부푼다',
+      badge: 'G4 · I + D⁻¹ᐟ²AD⁻¹ᐟ²',
+      caption: '반복이 하는 일은 곱셈이 아니라 거듭제곱이다. 원인은 계수가 아니라 ' +
+               '오른쪽 끝 눈금이다.',
+      falsify: 'I + S 의 폭발이 계수 하나가 커서 생긴 것이라면 ①의 원반에 1을 넘는 계수가 ' +
+               '있어야 한다. 없다. 원인은 ②의 오른쪽 끝 눈금 2.00이다. 다만 두 줄의 눈금이 ' +
+               '겹치는 것은 G4의 사정이지 동치의 증거가 아니다.',
+      cols: 1,
+      frames: function () { return frames; }
+    };
+  }
+
+  /* ── A8. spec-swap — S14 ──────────────────────────────── */
+
+  function figSpecSwap() {
+    var g = G.G4, o = gr.ops(g);
+    // 두 프레임의 굵기 기준은 같은 값이어야 비교가 뜻을 갖는다. 두 행렬 전체의 최댓값.
+    var scale = 0;
+    [o.Iplus, o.Ahat].forEach(function (M) {
+      M.forEach(function (r) {
+        r.forEach(function (v) { scale = Math.max(scale, Math.abs(v)); });
+      });
+    });
+
+    function frameOf(i) {
+      var M = i === 0 ? o.Iplus : o.Ahat;
+      var deg = i === 0 ? o.d : o.dt;
+      var ratio = M[0][0] / M[o.idx[1]][o.idx[3]];
+      return {
+        vb: [0, 0, 330, 180],
+        title: ORD[i] + (i === 0 ? ' 식 (7)의 계수' : ' 식 (8)의 계수'),
+        desc: ORD[i] + (i === 0 ? ' I + S — ' : ' Â — ') + '같은 G4 배선 위에 자기 고리와 ' +
+              '간선의 계수를 숫자로 적고 선 굵기를 계수에 맞춘 것. 자기 고리는 ' +
+              g.nodes.map(function (id) {
+                return 'v' + id + ' ' + num(M[o.idx[id]][o.idx[id]], 3);
+              }).join(', ') + ' 이고, 간선은 (1,2)가 ' + num(M[o.idx[1]][o.idx[2]], 3) +
+              ', (1,3)과 (2,4)가 ' + num(M[o.idx[1]][o.idx[3]], 3) + ' 이다. 차수는 ' +
+              (i === 0 ? 'd = ' : 'd̃ = ') + vecText(deg, 0) + ' 다.',
+        caption: ORD[i] + ' ' + (i === 0 ? 'd = ' : 'd̃ = ') + vecText(deg, 0) + '. ' +
+                 '자기 고리가 간선 (1,3)보다 ' + (ratio > 1 ? '굵다' : '가늘다') + ' — 비 ' +
+                 fx(ratio, 3) + '.' + (i === 0 ? '' : ' 배선은 한 선도 바뀌지 않았다.'),
+        draw: function (root, api) {
+          var gg = placed(root, api, 0, 16);
+          var roles = {}, loops = {};
+          g.nodes.forEach(function (id) {
+            roles[id] = 'active';
+            loops[id] = { label: dot3(M[o.idx[id]][o.idx[id]]), dx: loopDx(id),
+                          width: M[o.idx[id]][o.idx[id]] / scale };
+          });
+          api.drawGraph(gg, {
+            graph: g, arrow: api.arrow, roles: roles, selfLoops: loops,
+            edgeLabel: function (a, b) { return dot3(M[o.idx[a]][o.idx[b]]); },
+            edgeWidth: function (a, b) { return M[o.idx[a]][o.idx[b]] / scale; }
+          });
+        }
+      };
+    }
+
+    return {
+      id: 'spec-swap',
+      title: '배선은 그대로, 숫자만 바꿔 끼운다',
+      badge: 'G4 · Â = D̃⁻¹ᐟ²ÃD̃⁻¹ᐟ²',
+      caption: '자기 고리만 줄어든 것이 아니다. 간선 계수도 함께 바뀌어 v₁ 의 자기/이웃 비가 ' +
+               '뒤집힌다.',
+      falsify: 'renormalization이 자기 고리만 줄인 것이라면 ①과 ②의 간선 숫자가 같아야 한다. ' +
+               '셋 다 바뀐다.',
+      cols: 2,
+      frames: function () { return [frameOf(0), frameOf(1)]; }
+    };
+  }
+
+  /* ── A9. spec-mu — S15 ────────────────────────────────── */
+
+  function figSpecMu() {
+    var g = G.G4, o = gr.ops(g);
+    var x = signalOf(g);
+    var eigI = la.jacobiEig(o.Iplus);
+    var eigA = la.jacobiEig(o.Ahat);
+    var eigL = la.jacobiEig(o.L);
+    var mu = eigA.values[2];
+    var KS = [1, 2, 4, 8];
+    var hk = KS.map(function (k) { return la.matvec(la.matpow(o.Ahat, k), x); });
+    var blow = la.matvec(la.matpow(o.Iplus, 8), x);
+    var sqdt = o.dt.map(Math.sqrt);
+    // 0인 두 성분은 수치적으로 ±1e−17 이라 그대로 두면 막대가 0선의 서로 반대쪽에
+    // 놓인다. 규약 8이 부호를 "0선의 어느 쪽인가"로 읽게 하므로 임계값 아래를 눌러 둔다.
+    var comp = flat(la.matmul(eigL.vectors, colMat(sqdt)))
+      .map(function (t) { return Math.abs(t) < 1e-9 ? 0 : t; });
+    var labels = comp.map(function (t, k) { return ulab(k); });
+    var nonzero = comp.filter(function (t) { return Math.abs(t) > 1e-9; }).length;
+    var frames = [];
+
+    frames.push({
+      span: 'full',
+      vb: [0, 0, 452, 120],
+      title: '① 눈금이 안쪽으로 죄어진다',
+      desc: '① 눈금 — 1차원 축 한 줄에 두 행을 겹친다. 위 행은 I + S의 눈금 ' +
+            eigI.values.map(function (v) { return fx(v, 2); }).join(', ') +
+            '이고, 아래 행은 Â의 눈금 ' +
+            eigA.values.map(function (v) { return num(v, 3); }).join(', ') +
+            '이다. 아래 행이 (−1, 1] 안으로 죄어져 있고, G4에서는 없던 음수 눈금이 ' +
+            '새로 하나 생겼다.',
+      caption: '① 가장 큰 눈금이 정확히 ' + fx(eigA.values[3], 3) + '이 되고, G4에서는 없던 ' +
+               '음수 눈금이 새로 하나 생긴다. 두 줄의 관계는 Â = I − L(G̃) 한 줄이다.',
+      draw: function (root, api) {
+        // 줄 이름은 대본 A9가 적은 대로 I + S / Â 다. 긴 정의식을 줄 이름에 넣으면
+        // 축이 좁아져 Â 행의 이웃한 두 눈금 라벨(0.729와 1.000)이 서로 겹친다.
+        // 정의는 이 프레임의 캡션 "Â = I − L(G̃)" 한 줄과 배지가 맡는다.
+        api.drawAxis(root, {
+          x: 48, y: 34, w: 392, min: -1.15, max: 2.15, rowH: 26,
+          rows: [
+            { label: 'I + S', marks: eigI.values.map(function (v) {
+              return { v: v, label: fx(v, 2), shape: 'square' }; }) },
+            { label: 'Â', marks: eigA.values.map(function (v) {
+              return { v: v, label: num(v, 3), shape: 'tri' }; }) }
+          ],
+          ticks: [-1, 0, 1, 2].map(function (v) {
+            return { v: v, label: num(v, 0) };
           }),
-          ticks: [0, 0.25, 0.5, 0.75, 1].map(function (v) {
-            return { v: v, label: v.toFixed(2) };
-          }),
-          caption: '최대 |μ|가 2였다면 k = 8에서 256배가 되는 모드가 생긴다.'
+          caption: '안쪽으로 죄어진다'
+        });
+      }
+    });
+
+    frames.push({
+      span: 'full',
+      vb: [0, 0, 452, 172],
+      title: '② 여덟 층 뒤',
+      desc: '② 반복 — Â를 k = 1, 2, 4, 8번 적용한 결과 ' +
+            hk.map(function (v) { return vecText(v, 2); }).join(', ') +
+            '을 격자 네 개로 늘어놓고, 같은 k = 8에서 I + S가 준 세 자릿수 격자 ' +
+            vecText(blow, 1) + '를 아래에 나란히 적는다.',
+      caption: '② 같은 k = 8에서 한 자릿수 대 세 자릿수다. 대가는 나머지 모드가 μ = ' +
+               fx(mu, 4) + ' 의 8제곱, 곧 ' + fx(Math.pow(mu, 8), 4) + ' 로 죽는 것이다.',
+      draw: function (root, api) {
+        heading(root, api, 'Â 를 k 번 적용한 결과', 14, 24);
+        KS.forEach(function (k, i) {
+          api.drawGrid(root, {
+            x: 70 + i * 90, y: 48, cw: 52, ch: 24,
+            text: colMat(hk[i]).map(function (r) { return [num(r[0], 2)]; }),
+            colLabels: ['k = ' + k],
+            rowLabels: i === 0 ? rowLabelsOf(g) : null
+          });
+        });
+        note(root, api, '같은 k = 8에서 (I + S)⁸x = ' + vecText(blow, 1), 70, 164);
+      }
+    });
+
+    frames.push({
+      span: 'full',
+      vb: [0, 0, 452, 166],
+      title: '③ 반증 — 성분이 둘이다',
+      desc: '③ 반증 — 왼쪽에 Â의 μ = ' + fx(eigA.values[3], 3) + ' 모드인 √d̃ = ' +
+            vecText(sqdt, 3) + '를 격자로, 오른쪽에 그것을 L의 네 모드로 분해한 막대 네 개 ' +
+            comp.map(function (t) { return num(t, 3); }).join(', ') +
+            '를 그린다. 0이 아닌 막대가 ' + countKo(nonzero) + '이다.',
+      caption: '③ 0이 아닌 막대가 ' + countKo(nonzero) +
+               '이다. 하나였다면 Â 는 L 의 필터일 수 있었다.',
+      draw: function (root, api) {
+        heading(root, api, '√d̃ 를 L 의 네 모드로 분해하면', 14, 24);
+        api.drawGrid(root, {
+          x: 70, y: 48, cw: 54, ch: 24,
+          nums: colMat(sqdt), text: colMat(sqdt).map(function (r) { return [num(r[0], 3)]; }),
+          rowLabels: rowLabelsOf(g), colLabels: ['√d̃']
+        });
+        api.drawBars(root, {
+          x: 204, y: 48, w: 150, rowH: 24, zero: 254, scale: 30,
+          values: comp, labels: labels,
+          text: comp.map(function (t) { return num(t, 3); })
         });
       }
     });
 
     return {
-      id: 'spectral',
-      title: '스펙트럼 — 고유벡터는 정점 위 패턴, 고유값은 별도 축',
-      badge: 'G4 · L = I − D⁻¹ᐟ²AD⁻¹ᐟ²',
-      caption: '행을 주파수 순으로 재정렬하지 않는다. 격자의 행 순서는 정점 순서이고 ' +
-               '영구히 고정이다. 고유벡터 uₖ는 정점 축 객체이므로 원반과 격자 한 열로, ' +
-               '고유값 λₖ는 정점 축 객체가 아니므로 오직 S 축 위에만 그린다.',
-      falsify: '"GCN은 스펙트럼 합성곱과 동치"가 맞다면 마지막에서 두 번째 프레임의 ' +
-               '세 눈금이 같은 자리에 찍혀야 한다. 세 번째 줄만 안쪽으로 죄어져 있다.',
-      cols: 2,
+      id: 'spec-mu',
+      title: '눈금은 죄어지고, 기저는 바뀐다',
+      badge: 'G4 · Â = D̃⁻¹ᐟ²ÃD̃⁻¹ᐟ²',
+      caption: '세 가지를 나눠 확인한다. 프레임마다 판정이 하나씩 붙는다.',
+      falsify: '동치를 깨는 것은 ①의 눈금 범위가 아니라 ③의 기저다 — Â 의 네 눈금이 서로 ' +
+               '다르므로, Â 가 식 (3)의 필터라면 그 모드는 정확히 L 의 네 모드여야 한다. ' +
+               '③이 검사하는 것이 그 조건이고, 막대가 하나가 아니면 필터가 아니다.',
+      cols: 1,
       frames: function () { return frames; }
     };
   }
@@ -1487,7 +2221,16 @@
     'norm-3up': figNorm,
     'depth-frames': figDepth,
     'oversmoothing': figConverge,
-    'spectral': figSpectral,
-    'semi-mask': figSemi
+    'semi-mask': figSemi,
+    // 05 스펙트럼 다리 — 걸음 순서대로. 02의 'spectral' 한 장이 아홉 장으로 갈라졌다.
+    'spec-eigen': figSpecEigen,
+    'spec-lambda': figSpecLambda,
+    'spec-basis': figSpecBasis,
+    'spec-filter': figSpecFilter,
+    'spec-hop': figSpecHop,
+    'spec-cheby': figSpecCheby,
+    'spec-explode': figSpecExplode,
+    'spec-swap': figSpecSwap,
+    'spec-mu': figSpecMu
   };
 })(typeof window !== 'undefined' ? window : this);

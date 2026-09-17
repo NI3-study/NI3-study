@@ -111,6 +111,8 @@
    *   edgeState: fn(a, b) -> 'on'|'off'|'w'|'bottleneck',
    *   arrows:  [{from, to, label, dim}],
    *   rings:   [{center, pad, label}],
+   *   selfLoops:  {id -> {label, width}}          원반 위에 걸치는 반원
+   *   extraEdges: [{a, b, label, width, labelOff}] 배선에 없는 쌍(점찍은 현)
    *   arrow:   marker url
    * }
    */
@@ -156,6 +158,8 @@
       });
 
       if (ring.label && top) {
+        // 이 3px를 더 띄우면 테가 큰 프레임에서 이름표가 프레임 제목과 붙는다.
+        // 테가 정점 하나만 감쌀 때의 걸음표 겹침은 여기가 아니라 그 그림의 pad로 푼다.
         S('text', {
           'class': 'gnn-ring__label', x: top.x0 + 4, y: top.y0 - 3, text: ring.label
         }, ge);
@@ -183,6 +187,29 @@
         var tag = S('g', { 'class': 'gnn-tag gnn-tag--edge' }, layer);
         S('rect', { x: lx - 15, y: ly - 7, width: 30, height: 13, rx: 3 }, tag);
         S('text', { x: lx, y: ly + 3.4, 'text-anchor': 'middle', text: label }, tag);
+      }
+    });
+
+    // 점찍은 현: 등록부 graph.edges에 없는 정점 쌍. 좌표만 빌려 쓰고 간선 목록은
+    // 건드리지 않는다 — "정전 그래프는 G4 하나이며 확장은 정점을 더하기만 한다".
+    // 실재 간선에 쓰는 점선(gnn-edge--off)과 획을 구별하려고 전용 클래스를 쓴다.
+    (opt.extraEdges || []).forEach(function (e) {
+      var t = trim(pos[e.a], pos[e.b], 0, 0);
+      var attrs = {
+        'class': 'gnn-edge gnn-edge--phantom',
+        x1: t.x1, y1: t.y1, x2: t.x2, y2: t.y2
+      };
+      if (e.width != null) attrs.style = 'stroke-width:' + (0.9 + e.width * 5.2).toFixed(2);
+      S('line', attrs, layer);
+      if (e.label != null) {
+        // labelOff — 숫자 상자를 현의 수직 방향으로 얼마나 띄울지. 기본 9는 간선과
+        // 같은 값이고, 두 현이 교차하면서 상자가 정점 이름표를 덮는 자리에서만
+        // 그림이 부호를 바꿔 반대쪽으로 더 띄운다(값·좌표는 그대로다).
+        var off = (e.labelOff == null ? 9 : e.labelOff);
+        var lx = t.mx + t.px * off, ly = t.my + t.py * off;
+        var tag = S('g', { 'class': 'gnn-tag gnn-tag--edge' }, layer);
+        S('rect', { x: lx - 15, y: ly - 7, width: 30, height: 13, rx: 3 }, tag);
+        S('text', { x: lx, y: ly + 3.4, 'text-anchor': 'middle', text: e.label }, tag);
       }
     });
 
@@ -234,6 +261,30 @@
           'class': 'gnn-node__name', x: p[0], y: p[1] + r + 10,
           'text-anchor': 'middle', text: name
         }, ge);
+      }
+    });
+
+    // 자기 고리: 원반 위쪽에 걸치는 반원. 굵기 식은 간선과 같다.
+    // 원호 A 명령은 쓰지 않는다 — rx·ry와 플래그가 좌표로 오독되기 때문이다.
+    graph.nodes.forEach(function (id) {
+      var sl = opt.selfLoops && opt.selfLoops[id];
+      if (!sl) return;
+      var p = pos[id], top = p[1] - r;
+      var attrs = {
+        'class': 'gnn-edge gnn-edge--on', fill: 'none',
+        d: 'M ' + (p[0] - 7) + ' ' + (top + 2) +
+           ' C ' + (p[0] - 13) + ' ' + (top - 19) +
+           ' ' + (p[0] + 13) + ' ' + (top - 19) +
+           ' ' + (p[0] + 7) + ' ' + (top + 2)
+      };
+      if (sl.width != null) attrs.style = 'stroke-width:' + (0.9 + sl.width * 5.2).toFixed(2);
+      S('path', attrs, layer);
+      if (sl.label != null) {
+        // dx는 간선 숫자 상자와 겹치는 자리에서만 옆으로 비키기 위한 것이다.
+        var lx = p[0] + (sl.dx || 0), ly = top - 23;
+        var tag = S('g', { 'class': 'gnn-tag gnn-tag--edge' }, layer);
+        S('rect', { x: lx - 15, y: ly - 7, width: 30, height: 13, rx: 3 }, tag);
+        S('text', { x: lx, y: ly + 3.4, 'text-anchor': 'middle', text: sl.label }, tag);
       }
     });
 
@@ -342,6 +393,72 @@
       x: x0, y: y0, w: cols * cw, h: rows * ch, cw: cw, ch: ch,
       rowY: function (i) { return y0 + i * ch + ch / 2; },
       colX: function (j) { return x0 + j * cw + cw / 2; }
+    };
+  }
+
+  /* ══ 막대 — drawBars ═══════════════════════════════════════ */
+
+  /**
+   * 0선 기준 좌우 막대. 정점 축 위에 살지 않는 양(모드별 계수·배수·기여)만
+   * 여기에 그린다. 라벨은 u₁..u₄ 또는 k이며 v₁..v₄를 쓰지 않는다.
+   *
+   * opt = {
+   *   x, y, w, rowH, barH,
+   *   zero: 절대 x (없으면 x),
+   *   scale: 값 1당 픽셀,
+   *   values: [number], text: [string], labels: [string], notes: [string]
+   * }
+   * 반환 {x, y, w, h, rowY(i)}
+   */
+  function drawBars(g, opt) {
+    var x0 = opt.x, y0 = opt.y, w = opt.w || 100;
+    var rowH = opt.rowH || 22;
+    var barH = opt.barH || Math.min(13, rowH - 8);
+    var scale = opt.scale || 10;
+    var zero = opt.zero != null ? opt.zero : x0;
+    var vals = opt.values;
+    var layer = S('g', { 'class': 'gnn-bars' }, g);
+
+    S('line', {
+      'class': 'gnn-bar__zero',
+      x1: zero, y1: y0 + 1, x2: zero, y2: y0 + vals.length * rowH - 1
+    }, layer);
+
+    vals.forEach(function (v, i) {
+      var cy = y0 + i * rowH + rowH / 2;
+      // 음수 막대도 폭은 언제나 양수다. rect에 음수 width를 넣으면 렌더가 깨지고
+      // viewBox 검사도 구간을 뒤집어 읽는다. 부호는 0선의 어느 쪽인가와
+      // 병기된 값 숫자로만 읽힌다.
+      var len = Math.abs(v) * scale;
+      var neg = v < 0;
+      S('rect', {
+        'class': 'gnn-bar' + (neg ? ' gnn-bar--neg' : ''),
+        x: neg ? zero - len : zero, y: cy - barH / 2,
+        width: len, height: barH, rx: 1.5
+      }, layer);
+
+      if (opt.labels && opt.labels[i] != null) {
+        S('text', {
+          'class': 'gnn-bar__label', x: x0 - 4, y: cy + 3.2,
+          'text-anchor': 'end', text: opt.labels[i]
+        }, layer);
+      }
+      var val = opt.text ? opt.text[i] : fx(v, 2);
+      S('text', {
+        'class': 'gnn-bar__val',
+        x: neg ? zero - len - 3 : zero + len + 3, y: cy + 3.2,
+        'text-anchor': neg ? 'end' : 'start', text: val
+      }, layer);
+      if (opt.notes && opt.notes[i] != null) {
+        S('text', {
+          'class': 'gnn-bar__val', x: x0 + w + 4, y: cy + 3.2, text: opt.notes[i]
+        }, layer);
+      }
+    });
+
+    return {
+      x: x0, y: y0, w: w, h: vals.length * rowH,
+      rowY: function (i) { return y0 + i * rowH + rowH / 2; }
     };
   }
 
@@ -565,7 +682,7 @@
         frame.draw(ctx.root, {
           S: S, arrow: ctx.arrow, negPattern: ctx.negPattern,
           drawGraph: drawGraph, drawGrid: drawGrid, drawAxis: drawAxis,
-          drawBlock: drawBlock,
+          drawBars: drawBars, drawBlock: drawBlock,
           drawNodeAxisFlow: drawNodeAxisFlow,
           drawFeatureAxisFlow: drawFeatureAxisFlow
         });
@@ -583,7 +700,7 @@
   NI3.px = {
     S: S, H: H, clear: clear, uid: uid, fx: fx, fs: fs, sub: sub, trim: trim,
     drawGraph: drawGraph, drawGrid: drawGrid, drawAxis: drawAxis,
-    drawBlock: drawBlock,
+    drawBars: drawBars, drawBlock: drawBlock,
     drawNodeAxisFlow: drawNodeAxisFlow, drawFeatureAxisFlow: drawFeatureAxisFlow,
     buildFigure: buildFigure
   };

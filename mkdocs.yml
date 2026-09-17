@@ -32,13 +32,15 @@ theme:
         icon: material/brightness-4
         name: 밝은 화면으로 전환
 
-# nav 순서가 곧 권장 읽기 순서다: 01 → 03 → 02 → 04.
+# nav 순서가 곧 권장 읽기 순서다: 01 → 03 → 05 → 02 → 04.
 # 03이 02보다 앞에 오는 이유는 Â를 만드는 곳이 03, 쓰는 곳이 02이기 때문이다.
+# 05가 그 사이인 이유는, 02 §4가 도착 선언만 남기고 유도를 05로 옮겼기 때문이다.
 # 앞의 번호는 파일 이름이지 순서가 아니다.
 nav:
   - 시작하기: index.md
   - 01. GNN 입문: 01_gnn_gentle_guide.md
   - 03. MLP에서 GCN까지: 03_bridge_mlp_to_gcn.md
+  - 05. 스펙트럼 다리: 05_spectral_bridge.md
   - 02. GCN 논문 해설: 02_kipf2017_gcn_guide.md
   - 04. 실습과 토론: 04_exercises.md
 
