@@ -22,6 +22,40 @@
   overflow-y: hidden;
 }
 
+/* 수식 저작 기준 — 인라인 수식은 기본적으로 손대지 않는다.
+   인라인 수식은 글줄의 일부다. MathJax가 잡아 준 폭과 기준선을 그대로
+   두는 것이 기본값이고, 아래 규칙은 예외 처리다.
+
+   - 본문 열보다 실제로 넓은 수식에만 mathjax.js가 .is-wide 를 달고,
+     그때만 스크롤 상자가 생긴다. span 자체에 overflow를 걸면
+     inline-block이 되면서 글줄 기준선이 아래쪽 마진 모서리로 바뀌어
+     수식이 통째로 ~7px 떠오른다. 그래서 한 겹 안쪽의 mjx-container에
+     걸고, MathJax가 이미 갖고 있던 내림을 손으로 돌려준다.
+   - vertical-align: -0.31em 은 수식마다 다른 양(mjx-container 글꼴
+     크기 122.8% 기준)을 상수 하나로 근사한 값이다. 근사이므로 넘치는
+     수식에만 쓰고, 멀쩡한 수식 전체에 퍼뜨리지 않는다.
+   - mjx-assistive-mml만은 인라인 전체에 그대로 건다. 화면에 보이지 않는
+     접근성용 MathML이지만 절대 위치 + width:auto라 실제 폭을 만들고,
+     스크롤 상자가 없어지면 그 폭이 페이지 바깥으로 흘러나간다. 실측:
+     390px에서 이 한 줄을 .is-wide로 좁히면 문서 폭이 390 → 394·429·447로
+     늘어난다(01·05·04). 보이는 수식은 손대지 않으므로 "기본값은 그대로"와
+     어긋나지 않는다. 1px로 접어도 읽기 전용 보조 기술에는 영향이 없다.
+   - 디스플레이 수식은 위 `.arithmatex { overflow-x: auto }` 가 그대로
+     맡는다. 애초에 긴 수식은 인라인이 아니라 디스플레이로 쓰는 것이
+     기준이고, 그 기준은 tools/verify-figures.mjs 의 mathLint가 강제한다. */
+span.arithmatex > mjx-container.is-wide {
+  display: inline-block;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  vertical-align: -0.31em;
+}
+
+span.arithmatex mjx-assistive-mml {
+  width: 1px !important;
+  height: 1px !important;
+}
+
 /* ─────────────────────────────────────────────────────────────
    GNN 시각 계보 (docs/javascripts/gnn/*.js)
 
@@ -589,10 +623,14 @@
   .md-typeset .gnn-fieldset { flex: 1 1 100%; }
 }
 
-/* 좁은 화면에서 span:'full' 프레임(viewBox 폭 446~452)은 통째로 축소되어 9px 축
-   라벨이 6~7px가 된다. 그 아래로는 읽히지 않는다. 그래서 viewBox 폭만큼은 최소로
-   확보하고(배율 ≥ 1), 모자라는 만큼은 프레임 안쪽만 가로로 스크롤시킨다. 데스크톱
-   에서는 프레임이 이미 470px보다 넓으므로 이 두 줄이 아무 일도 하지 않는다 —
+/* 좁은 화면에서 span:'full' 프레임은 통째로 축소되어 9px 축 라벨이 6~7px가 된다.
+   그 아래로는 읽히지 않는다. 그래서 viewBox 폭만큼은 최소로 확보하고(배율 ≥ 1),
+   모자라는 만큼은 프레임 안쪽만 가로로 스크롤시킨다.
+
+   불변식: 무대 최소 폭 = 가장 넓은 프레임 폭 + 2. 그 값은 registry.js의
+   NI3.LAYOUT.minStageWidth에서 계산되어 mount.js가 --gnn-stage-min으로 넘긴다.
+   여기 적힌 470px은 JS가 아직 마운트하지 않았을 때의 대비값일 뿐이다.
+   데스크톱에서는 프레임이 이미 그보다 넓으므로 이 두 줄이 아무 일도 하지 않는다 —
    중단점이 필요 없고, 페이지 자체는 어느 폭에서도 가로로 넘치지 않는다. */
 .md-typeset .gnn-frame--full .gnn-frame__stage {
   overflow-x: auto;
@@ -600,7 +638,7 @@
 }
 
 .md-typeset .gnn-frame--full .gnn-frame__stage svg {
-  min-width: 470px;
+  min-width: var(--gnn-stage-min, 470px);
 }
 
 @media (prefers-reduced-motion: reduce) {

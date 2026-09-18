@@ -589,7 +589,21 @@
   /* ══ 프레임 · 그림 셸 ══════════════════════════════════════ */
 
   function makeFrameSvg(parent, frame, id) {
-    var vb = frame.vb;
+    var L = NI3.LAYOUT;
+    // span은 배치 등록부에 있는 값만 받는다. 없으면 'auto'다. 오타 하나가
+    // 조용히 'auto'로 떨어지면 넓은 프레임이 좁은 칸에 갇혀도 아무도 모른다.
+    var span = frame.span == null ? 'auto' : frame.span;
+    if (L.spans.indexOf(span) < 0) {
+      throw new Error('gnn: frame.span "' + span + '" 은(는) 없는 값이다. ' +
+        '쓸 수 있는 값: ' + L.spans.join(', '));
+    }
+    // vb를 직접 적는 것은 기존 그림의 방식이다. 새 그림은 프리셋 이름과 높이만 준다.
+    var preset = frame.preset && L.frame[frame.preset];
+    if (!frame.vb && !preset) {
+      throw new Error('gnn: frame에 vb도 preset도 없다' +
+        (frame.preset ? ' (없는 preset "' + frame.preset + '")' : ''));
+    }
+    var vb = frame.vb || [0, 0, preset.w, frame.h];
     var svg = S('svg', {
       viewBox: vb.join(' '),
       preserveAspectRatio: 'xMidYMid meet',

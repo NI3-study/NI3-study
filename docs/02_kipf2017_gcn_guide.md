@@ -130,6 +130,8 @@ $$
 
 [Kipf & Welling 2017, Eq. (8)]
 
+여기서 $C$는 입력 특성 채널의 수, $F$는 출력 채널(필터)의 수이고, $Z\in\mathbb R^{N\times F}$는 전파된 신호다.
+
 $\Theta$는 식 (2)의 $W^{(l)}$과 같은 물건이고, 이 식이 식 (2)의 한 층으로 이어진다.
 
 ### 4.1 이 유도에는 선택 지점이 네 개 있다 { #spectral-choices }
@@ -139,7 +141,7 @@ $\Theta$는 식 (2)의 $W^{(l)}$과 같은 물건이고, 이 식이 식 (2)의 �
 | | 지점 | 성격 | 05의 자리 |
 |---|---|---|---|
 | (a) | $K=1$ | **1차 절단** — 층당 1-hop으로 묶고 층을 쌓기로 한 것이다. Chebyshev $K=2,3$도 논문이 함께 실험했다([Table 3](#propagation-comparison)). | [S12](05_spectral_bridge.md#s12) |
-| (b) | $\theta=\theta'_0=-\theta'_1$ | **부호 묶기** — 논문이 드는 이유는 파라미터와 연산을 줄여 과적합을 억제한다는 것 하나이고, 부호를 왜 그렇게 묶는지는 적지 않는다. | [S13](05_spectral_bridge.md#s13) |
+| (b) | $\theta=\theta'_0=-\theta'_1$ | **부호 묶기** — 논문이 드는 이유는 파라미터 수를 더 제한해 얻는 **두 가지**다 — 과적합 억제와 층별 연산 수(행렬 곱 같은) 최소화. 부호를 왜 그렇게 묶는지는 적지 않는다. | [S13](05_spectral_bridge.md#s13) |
 | (c) | $\lambda_{max}\approx2$ | **눈금 근사** — 논문은 학습 중 파라미터가 이 척도 변화에 적응할 것으로 기대한다고 적는다. G4는 경로 그래프라 마침 정확히 2이고, 근사가 근사로 보이는 것은 G4○의 1.809에서다. Table 3에 이 지점의 대조 행은 없다. | [S11](05_spectral_bridge.md#s11) |
 | (d) | $I+D^{-1/2}AD^{-1/2}\to\hat A$ | **연산자 교체** — 동치 변형이 **아니다**. 두 연산자는 자기 연결 계수도 간선 계수도 다르고, $\hat A$의 고유벡터는 $L$의 고유벡터가 아니다. | [S14](05_spectral_bridge.md#s14)·[S15](05_spectral_bridge.md#s15) |
 
@@ -168,7 +170,7 @@ $$
 정규화는 “한다 / 안 한다”의 2지가 아니라 최소 3지다. 원본 합, 행 평균, 대칭 정규화 — 셋은 서로 다른 것을 버린다.
 
 <div class="gnn-fig-slot" data-gnn-fig="norm-3up" markdown="0">
-<p class="gnn-fallback">정지 프레임 4장. 그래프는 G4★ — G4의 v1에 잎 v5, v6을 붙인 확장이고 d̃ = (5, 3, 2, 2, 2, 2)다. 특성은 x = (1, …, 6)이다. ① raw Ã: 모든 계수가 1, 행 합 = d̃ᵢ, 출력 (17, 7, 4, 6, 6, 7), 격차 4.25배. ② mean D̃⁻¹Ã: 행 합이 전부 정확히 1.00, 출력 (3.40, 2.33, 2.00, 3.00, 3.00, 3.50), 격차 1.75배. 대신 비대칭이다. ③ sym Â: 계수 1/√(d̃ᵢd̃ⱼ), 행 합 (1.41, 1.00, 0.82, 0.91, 0.82, 0.82) — 1이 아니다. ④ 두 계수 격자를 나란히 놓은 비교. Â₁₃ = 1/√10 ≈ 0.316과 Â₂₄ = 1/√6 ≈ 0.408은 받는 쪽 차수가 둘 다 2인데도 다르다. 보내는 쪽 차수(5 대 3)가 남아 있기 때문이다.</p>
+<p class="gnn-fallback">정지 프레임 4장. 그래프는 G4★ — G4의 v1에 잎 v5, v6을 붙인 확장이고 d̃ = (5, 3, 2, 2, 2, 2)다. 특성은 x = (1, …, 6)이다. ① raw Ã: 모든 계수가 1, 행 합 = d̃ᵢ, 출력 (17, 7, 4, 6, 6, 7), 격차 4.25배. ② mean D̃⁻¹Ã: 행 합이 전부 정확히 1.00, 출력 (3.40, 2.33, 2.00, 3.00, 3.00, 3.50), 격차 1.75배. 대신 비대칭이다. ③ sym Â: 계수 1/√(d̃ᵢd̃ⱼ), 행 합 (1.41, 1.00, 0.82, 0.91, 0.82, 0.82) — 1이 아니다. ④ 두 계수 격자를 나란히 놓은 비교. Â₃₁ = 1/√10 ≈ 0.316과 Â₄₂ = 1/√6 ≈ 0.408은 받는 쪽(v₃, v₄)의 차수가 둘 다 2인데도 다르다. 보내는 쪽 차수(v₁의 5 대 v₂의 3)가 남아 있기 때문이다.</p>
 </div>
 
 여기서만 그래프가 **G4★**이다. G4는 $\tilde d=(3,3,2,2)$라 차수 격차가 1.5배뿐이어서 세 갈래의 순위와 배수가 눈에 띄게 벌어지지 않는다. 그래서 G4의 네 정점을 좌표·번호·특성 그대로 둔 채 $v_1$에 잎 두 개만 더했다. 아래 [6절 손계산](#hand-calc)은 다시 G4다.
@@ -179,7 +181,7 @@ $$
 2. **대칭 정규화는 차수 효과를 줄이되 지우지 않는다.** 출력의 최대/최소 비가 원본 4.25배 → 대칭 2.83배로 줄지만, 행 평균의 1.75배까지 가지는 않는다. 허브는 정규화 뒤에도 더 많은 항을 더한다.
 3. **보내는 쪽 차수가 남는다.** 특성을 모두 1로 고정하면 이 효과가 원리적으로 보이지 않는다. $x$를 정점마다 다르게 두어야 $1/\sqrt{\tilde d_j}$ 항이 숫자에 드러난다.
 
-[해설] 어느 쪽이 “정답”인가가 아니다. 행 평균을 쓰면 격차는 사라지지만 **이웃 수 자체가 신호일 때 그 신호를 버리고**([01 §6](01_gnn_gentle_guide.md#aggregation)), 행렬이 비대칭이 되어 spectral 해석도 달라진다. 무엇을 버릴지 고르는 설계 선택이다.
+[해설] 어느 쪽이 “정답”인가가 아니다. 행 평균을 쓰면 행 합만 정확히 1로 고정될 뿐 출력 격차는 1.75배로 남고, 그 대신 **이웃 수 자체가 신호일 때 그 신호를 버리며**([01 §6](01_gnn_gentle_guide.md#aggregation)), 행렬이 비대칭이 되어 spectral 해석도 달라진다. 무엇을 버릴지 고르는 설계 선택이다.
 
 ## 6. 4개 정점 손계산 { #hand-calc }
 
@@ -286,6 +288,8 @@ W^{(1)}:H\times F,
 \quad Z:N\times F.
 $$
 
+(여기서 $H$는 은닉 채널 수를 가리키는 **스칼라**이고 — 논문의 인용 데이터 실험에서는 16, NELL에서는 64 — 활성화 행렬 $H^{(l)}$과는 다른 것이다. 논문이 같은 글자를 두 뜻으로 쓴다.)
+
 각 행의 softmax는 그 정점의 클래스 확률을 만든다. 손실은 라벨이 있는 정점 집합 $\mathcal Y_L$에서만 계산한다.
 
 $$
@@ -294,6 +298,8 @@ $$
 $$
 
 [Kipf & Welling 2017, Eq. (10)]
+
+여기서 $Y$는 라벨 행렬이고 $Y_{lf}$는 정점 $l$의 정답이 클래스 $f$일 때만 1인 one-hot 성분이며, $\mathcal Y_L$은 라벨이 있는 **정점 인덱스의 집합**이다. [Kipf & Welling 2017, §3.1] 실제로 최소화하는 양은 여기에 첫 층 L2 항 $5\times10^{-4}\lVert W^{(0)}\rVert_F^2$을 더한 것이다 — 정규화는 첫 층에만 붙는다([§9.1](#experiments)).
 
 그래도 backpropagation은 $\hat A$가 만든 계산 그래프를 따라 공유 가중치 $W^{(0)},W^{(1)}$에 전달된다. 모든 정점의 특성과 연결이 forward 표현 계산에 쓰인다.
 
@@ -314,26 +320,42 @@ $$
 
 즉 정점 하나를 forward에서 빼는 것은 그 정점의 값 하나를 빼는 일이 아니라 연산자 $\hat A$ 자체를 바꾸는 일이다. 라벨 없는 정점은 “쓸모없는 데이터”가 아니라 **계산 경로이자 정규화 상수**다.
 
-[해설] 뒤집어 말하면, 이 이득은 학습 시점에 그 정점들을 이미 보고 있다는 transductive 가정 위에 서 있다. 테스트 시점에 새 정점 하나를 추가하면 기존 정점의 예측이 바뀔 수 있다. 새 그래프로의 일반화는 별도 평가가 필요하다 — [§1의 transductive / inductive 구분](#semi-supervised-setup).
+[해설] 뒤집어 말하면, 이 이득은 학습 시점에 그 정점들을 이미 보고 있다는 transductive 가정 위에 서 있다. 테스트 시점에 새 정점 하나를 추가하면 기존 정점의 예측이 바뀔 수 있다. 새 그래프로의 일반화는 별도 평가가 필요하다 — [§1의 transductive / inductive 구분](#semi-supervised-setup). 추론의 단위는 정점 하나가 아니라 그래프 전체다. 정점이나 간선을 하나라도 더하면 $\hat A$를 다시 만들고 forward를 처음부터 다시 돌려야 하며(가중치 $W^{(0)},W^{(1)}$은 그대로 재사용할 수 있다), 학습에서 본 적 없는 다른 그래프로 옮겨 가는 것은 논문이 평가하지 않는 inductive 설정이다.
 
-## 8. 계산 복잡도와 구현
+## 8. 계산 복잡도와 구현 { #implementation }
 
-[원문] $\tilde A$를 희소 행렬로 저장하면 식 (8)의 희소-조밀 곱 비용은 $O(|E|FC)$이며 간선 수에 선형이다. 2층 모델도 희소 연산을 사용한다. 논문 실험은 데이터 전체를 매 epoch 사용하는 full-batch gradient descent를 사용했다. [Kipf & Welling 2017, §2.2, §3.2]
+[원문] $\tilde A$를 희소 행렬로 저장하면 식 (8)의 희소-조밀 곱 비용은 $O(|E|FC)$이며 간선 수에 선형이다. 2층 모델도 희소 연산을 사용한다. 논문 실험은 데이터 전체를 매 epoch 사용하는 full-batch gradient descent를 사용했다. [Kipf & Welling 2017, §2.2, §3.1–3.2] 논문은 학습 과정의 확률성을 dropout으로 넣는다고 적는다. [Kipf & Welling 2017, §3.1]
+
+[해설] full-batch라 매 step 데이터가 같으므로 남는 확률성은 dropout 하나뿐이다. dropout을 검증·추론에서 끄는 것은 논문이 따로 적지 않은 표준 구현 관행이다(Srivastava et al. 2014).
 
 최소 NumPy 형태의 의사코드는 다음과 같다.
 
 ```python
-# A: (N, N), X: (N, C)
-A_tilde = A + I
-d = A_tilde.sum(axis=1)
-D_inv_sqrt = diag(d ** -0.5)
-A_hat = D_inv_sqrt @ A_tilde @ D_inv_sqrt
+# A: (N, N), X: (N, C), train_mask / val_mask / test_mask: (N,) bool
+A_hat = sym_normalize(A + I)             # 전처리에서 한 번. 학습 대상이 아니다.
+W0, W1 = glorot((C, H)), glorot((H, F))  # 학습되는 것은 이 둘뿐. Cora: 1433×16, 16×7
 
-H = relu(A_hat @ X @ W0)
-logits = A_hat @ H @ W1
-Z = softmax(logits, axis=1)
-loss = cross_entropy(Z[labeled_idx], Y[labeled_idx])
+def forward(X, training):
+    H = dropout(X, 0.5, training)        # 논문은 '모든 층'(§5.2)이라고만 적는다. 각 층 입력에 거는 배치는 참조 구현
+    H = relu(A_hat @ H @ W0)
+    H = dropout(H, 0.5, training)
+    return softmax(A_hat @ H @ W1, axis=1)   # Z: (N, F) — 모든 정점
+
+# 학습 — 한 step이 전체 그래프 forward 한 번(full-batch)
+for epoch in range(200):
+    Z = forward(X, training=True)
+    loss = cross_entropy(Z[train_mask], Y[train_mask]) + 5e-4 * (W0 ** 2).sum()   # 식 (10) 그대로 확률 Z를 받는다(logit을 받는 프레임워크 함수와 다르다)
+    W0, W1 = adam_step(loss, [W0, W1], lr=0.01)     # Â와 X는 갱신되지 않는다
+    val_loss = cross_entropy(forward(X, training=False)[val_mask], Y[val_mask])
+    if no_decrease_for(val_loss, window=10):
+        break
+
+# 추론 — 학습이 끝난 뒤 한 번. 손실도 gradient도 갱신도 없다.
+Z = forward(X, training=False)
+pred = argmax(Z, axis=1)                 # 모든 정점의 예측. 채점은 test_mask 행에서 한다.
 ```
+
+[해설] 추론은 마지막 학습 step의 forward와 같은 계산이다 — 학습이 끝난 $W^{(0)},W^{(1)}$에 같은 $\hat A$와 같은 $X$를 넣고 dropout만 끈 것이며, 손실도 갱신도 없다. 각 행에서 가장 큰 확률의 열 번호(argmax)가 그 정점의 예측 클래스다. transductive 설정에서 test 행은 이미 매 학습 forward마다 계산되고 있었고, 달랐던 것은 그 행이 손실에 들어가지 않았다는 점 하나뿐이다.
 
 실제 큰 그래프에서는 `A_hat`을 조밀 행렬로 만들지 말고 sparse matrix 또는 edge index 기반 연산을 사용해야 한다.
 
@@ -352,7 +374,7 @@ loss = cross_entropy(Z[labeled_idx], Y[labeled_idx])
 
 Table 1의 NELL 특성 수 5,414는 원 표의 값이다. §5.1의 전처리 설명에서는 관계 정점마다 고유 one-hot 특성을 더해 실제 입력을 61,278차원 희소 벡터로 확장한다고 적혀 있으므로 두 숫자의 문맥을 구분해야 한다.
 
-인용 데이터에서는 클래스당 20개 라벨만 훈련에 사용하지만 모든 정점 특성을 사용한다. 기본 모델은 2층, hidden unit 16, dropout 0.5, 첫 층 L2 정규화 $5\times10^{-4}$, Adam 학습률 0.01이다. [Kipf & Welling 2017, §5]
+인용 데이터에서는 클래스당 20개 라벨만 훈련에 사용하지만 모든 정점 특성을 사용한다. 기본 모델은 2층이고, 하이퍼파라미터는 인용 데이터(Citeseer·Cora·Pubmed)에서 hidden unit 16, dropout 0.5, 첫 층 L2 $5\times10^{-4}$, NELL에서 hidden unit 64, dropout 0.1, 첫 층 L2 $1\times10^{-5}$이다. 최적화는 Adam(gradient의 최근 이력으로 갱신 폭을 자동 조절하는 경사하강 변형) 학습률 0.01로 최대 200 epoch을 돌리되 검증 손실이 10 epoch 연속으로 줄지 않으면 멈추는 early stopping(window 10)을 건다. 분할은 Yang et al. (2016)의 것을 그대로 쓰고 여기에 검증용 정점 500개를 더하는데, 이 500개는 하이퍼파라미터(모든 층의 dropout 비율, 첫 층 L2 계수, hidden unit 수) 선택과 위의 early stopping 판정(검증 손실)에 쓰며, 훈련 손실에는 넣지 않고, 그 하이퍼파라미터 튜닝은 Cora에서만 하고 Citeseer·Pubmed에는 같은 값을 쓴다. 정확도는 test 정점 1,000개에서 보고하고, 검증 라벨은 훈련에 쓰지 않으며 test 라벨은 평가에만 쓴다. 가중치는 Glorot 초기화(입력·출력 채널 수에 맞춰 분산을 정해 초깃값을 뽑는 표준 방법)를 쓰고 입력 특성은 행 정규화한다. [Kipf & Welling 2017, §5.2, §6.1]
 
 ### 9.2 반지도 분류 결과
 
@@ -380,7 +402,7 @@ Table 1의 NELL 특성 수 5,414는 원 표의 값이다. §5.1의 전처리 설
 
 [Kipf & Welling 2017, Table 3. 숫자는 무작위 초기화 100회 반복의 평균 정확도다. 가운데 열은 원 표의 propagation model 열을 그대로 옮긴 것이다. **원 표에서 굵게 표시된 것은 논문 자신의 모델인 renormalization trick 행이지 최댓값 표시가 아니므로**(§6.2 "The propagation model of our original GCN model is denoted by renormalization trick (in bold)"), 이 판도 숫자가 아니라 행 이름을 굵게 한다. 그리고 1차 모델 행의 둘째 항이 [05 S12](05_spectral_bridge.md#s12)의 식 (6)과 **부호가 다른 것**은, 원 표가 $\Theta_1$을 자유 행렬로 두어 부호를 그 안에 흡수했기 때문이다.]
 
-[해설] 가운데 열이 [4.1의 선택 지점](#spectral-choices) 중 (a)·(b)·(d)와 한 줄씩 맞물린다 — (a)는 Chebyshev $K$ 행, (b)는 식 (6)→식 (7) 행, (d)는 식 (7)→식 (8) 행이고, 각 행의 식을 [05](05_spectral_bridge.md)의 어느 걸음에서 만들었는지까지 따라갈 수 있다. **(c)만은 표에서 견줄 짝이 없다** — Chebyshev 행(식 (5))의 $\tilde L$은 정확한 $\lambda_{max}$로 만든 것이지만 절단 차수까지 함께 다르므로, $\lambda_{max}\approx2$ 하나만 바꾼 대조 행은 논문에 없다. 즉 renormalization이 옳다는 근거는 유도의 필연성이 아니라 **이 세 줄의 차이**다. 그리고 그 차이는 Citeseer에서 1.0점, Cora에서 2.3점, Pubmed에서 1.6점이다 — 작지 않지만 결정적이라고 부를 만큼 크지도 않다.
+[해설] 가운데 열이 [4.1의 선택 지점](#spectral-choices) 중 (a)·(b)·(d)와 한 줄씩 맞물린다 — (a)는 Chebyshev $K$ 행, (b)는 식 (6)→식 (7) 행, (d)는 식 (7)→식 (8) 행이고, 각 행의 식을 [05](05_spectral_bridge.md)의 어느 걸음에서 만들었는지까지 따라갈 수 있다. **(c)만은 표에서 견줄 짝이 없다** — Chebyshev 행(식 (5))의 $\tilde L$은 정확한 $\lambda_{max}$로 만든 것이지만 절단 차수까지 함께 다르므로, $\lambda_{max}\approx2$ 하나만 바꾼 대조 행은 논문에 없다. 즉 renormalization이 옳다는 근거는 유도의 필연성이 아니라 **이 세 줄의 차이**다. 그리고 바로 앞 행(식 (7))과의 차이는 Citeseer에서 1.0점, Cora에서 2.3점, Pubmed에서 1.6점이다 — 작지 않지만 결정적이라고 부를 만큼 크지도 않다.
 
 [원문] 논문 스스로도 이 교체를 실험으로 정당화한다. "제안한 renormalize된 전파 모델(식 (8))이 소박한 1차 모델(식 (6))이나 Chebyshev 다항식을 쓰는 고차 그래프 합성곱 모델(식 (5))에 비해 효율(파라미터와 곱셈·덧셈 같은 연산의 수가 더 적다)과 여러 데이터셋에서의 예측 성능을 **둘 다** 개선함을 보였다." [Kipf & Welling 2017, §7.1]
 
@@ -398,6 +420,10 @@ h_i^{(l+1)}=\sigma\left(
 $$
 
 로 보고, $c_{ij}=\sqrt{d_id_j}$를 선택하면 GCN의 정점별 식을 얻는다고 설명한다. [Kipf & Welling 2017, Appendix A]
+
+[원문] 단 이 회수에는 논문 각주 5의 전제가 붙는다 — "여기서 우리는 그래프의 모든 정점에 자기 연결이 이미 더해져 있다고 암묵적으로 가정한다(표기를 깔끔하게 두기 위해)." [Kipf & Welling 2017, Appendix A, 각주 5]
+
+[해설] 즉 $\mathcal N(i)$는 $i$ 자신을 포함하고 $d$는 $\tilde d$여야 하며, 그때에야 $c_{13}=\sqrt{\tilde d_1\tilde d_3}=\sqrt{3\cdot2}=\sqrt6$이 [6.2](#hand-calc)의 $\hat A_{13}=1/\sqrt6$과 맞는다.
 
 중요한 표현은 논문의 “loosely speaking”이다. GCN을 WL-1의 미분 가능한 파라미터화된 일반화로 **해석할 수 있다**는 직관이지, 합과 선형변환을 쓰는 GCN이 이상적인 injective hash와 항상 같은 구별 능력을 가진다는 정리는 아니다.
 

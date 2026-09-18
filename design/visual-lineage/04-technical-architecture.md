@@ -64,7 +64,8 @@ G4를 정전(canonical)으로 고정할 근거가 하나 더 있다. G4의 지�
 
 ## 6. 반응형 · 접근성
 
-- **프레임당 SVG 1개.** 넓은 SVG 하나를 축소하면 모바일에서 글자가 죽는다. `grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr))`로 4 → 2 → 1열. 현재의 `min-width: 18rem` + 가로 스크롤은 프레임 스트립에서 제거한다.
+- **프레임당 SVG 1개.** 넓은 SVG 하나를 축소하면 모바일에서 글자가 죽는다. `grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr))`로 4 → 2 → 1열. 현재의 `min-width: 18rem` + 가로 스크롤은 프레임 스트립에서 제거한다. **예외를 하나만 의도적으로 남긴다.** `span: 'full'` 프레임은 무대 하나에 여러 칸이 들어가서 통째로 축소되면 9px 축 라벨이 6~7px로 내려가 읽히지 않는다. 그래서 이 프레임에 한해 `.gnn-frame--full .gnn-frame__stage { overflow-x: auto }` + 그 안 `svg { min-width: var(--gnn-stage-min) }`로 **바닥 폭을 지키고 프레임 안쪽만** 가로로 스크롤시킨다. 무대 최소 폭 = 가장 넓은 프레임 폭 + 2이고, `registry.js`의 `NI3.LAYOUT.minStageWidth`에서 계산해 `mount.js`가 `--gnn-stage-min`으로 넘긴다. 열을 줄이는 것과 글자 바닥을 지키는 것이 충돌하는 자리는 여기뿐이다 — 페이지 자체는 어느 폭에서도 가로로 넘치지 않는다.
+- **인라인 수식은 기본적으로 손대지 않는다.** 인라인 수식은 글줄의 일부이므로 MathJax가 잡아 준 폭과 기준선을 그대로 둔다. 본문 열보다 **실제로** 넓은 수식에만 `mathjax.js`가 `.is-wide`를 달고, 그때만 `span.arithmatex > mjx-container.is-wide`가 스크롤 상자와 `vertical-align: -0.31em` 기준선 보정을 켠다. 이 보정값은 수식마다 다른 양을 상수 하나로 근사한 것이라 멀쩡한 수식 전체에 퍼뜨릴 수 없다. 다만 숨은 `mjx-assistive-mml`을 1px로 접는 한 줄은 인라인 전체에 그대로 둔다 — 절대 위치 + `width:auto`라 스크롤 상자가 없으면 그 폭이 페이지 밖으로 흘러 390px에서 문서 폭이 394~447px로 늘어난다(실측). 보이는 수식은 건드리지 않으므로 기본값 원칙과 어긋나지 않는다. 긴 수식은 애초에 디스플레이(`$$…$$`)로 쓰는 것이 저작 기준이고, `tools/verify-figures.mjs`의 mathLint가 인라인 36글리프에서 FAIL·28글리프에서 WARN으로 그 기준을 강제한다(줄 끝 `<!-- mathlint: allow -->`가 유일한 예외 통로).
 - SVG 내부 글자 실효 크기 11px 이상을 보장하는 최소 프레임 폭을 등록부에 명시하고, 그 아래로는 열 수를 줄인다.
 - 컨트롤 터치 타깃 44×44 이상.
 - **런타임 `h4` 주입 중단.** 그림은 `<figure>` + `<figcaption>`으로 바꾼다. 현재는 JS가 문서 heading 위계에 h4를 끼워 넣는다.

@@ -19,6 +19,9 @@
 
   var MINUS = '−';
 
+  /** 계약이 적는 안전 여백. 정본은 registry.js의 NI3.LAYOUT.safeArea 하나다. */
+  var SAFE = (NI3.LAYOUT && NI3.LAYOUT.safeArea != null) ? NI3.LAYOUT.safeArea : 6;
+
   function num(v, d) { return fx(v, d).replace('-', MINUS); }
 
   /** 원반 안에 들어갈 짧은 3자리 표기 (.056 / .347). */
@@ -195,10 +198,12 @@
             x: 176, y: cy - 15, w: 36, h: 30, label: 'W' + SL, sub: 'σ', muted: true
           });
           api.S('line', {
-            'class': 'gnn-flow__line', x1: 214, y1: cy, x2: 222, y2: cy, 'marker-end': api.arrow
+            'class': 'gnn-flow__line', x1: 214, y1: cy, x2: 219, y2: cy, 'marker-end': api.arrow
           }, root);
+          // 격자 제목 h⁽ˡ⁺¹⁾ 가 칸보다 넓어 x = 224 에서는 프레임 오른쪽으로 2.3 삐져나간다.
+          // 칸은 그대로 두고 상자만 3 왼쪽으로 민다 — 화살 끝도 같이 3 당긴다.
           api.drawGrid(root, {
-            x: 224, y: cy - 11, cw: 34, ch: 22,
+            x: 221, y: cy - 11, cw: 34, ch: 22,
             text: [[fs(m[i], 2)]], heading: 'h' + sub(id) + SL1
           });
 
@@ -325,6 +330,24 @@
                '있어야 하고, 시작 정점 하나가 지목되어야 한다. 네 행이 한꺼번에 있고 ' +
                '시작 정점은 없다.',
       cols: 2,
+      contract: {
+        page: '01_gnn_gentle_guide.md', slot: 'state-transition',
+        anchor: 'viz-message-passing',
+        data: { graphs: ['G4'], ops: ['At', 'd', 'dt', 'idx'] },
+        frames: {
+          count: 4, preset: 'wide',
+          span: ['full', 'auto', 'auto', 'full'],
+          safeArea: SAFE
+        },
+        primitives: ['S', 'drawBlock', 'drawGraph', 'drawGrid'],
+        text: { maxChars: { heading: 34, note: 60, caption: 300 } },
+        fallback: {
+          declaresFrameCount: true,
+          numbers: ['(1, 2, 3, 4)', '(3, 3, 2, 2)', 'm₁⁽ˡ⁾ = 6', 'm₄⁽ˡ⁾ = 6', '(6, 7, 4, 6)'],
+          mustMention: ['비학습 장난감', '병렬', '되먹임 화살'],
+          mustNotMention: ['소형 다중']
+        }
+      },
       frames: function () { return frames; }
     };
   }
@@ -478,6 +501,19 @@
       falsify: '"집계기는 계산 편의일 뿐"이 맞다면 여섯 띠의 결과가 모두 두 칸으로 갈라져야 한다. ' +
                '띠마다 한 칸으로 합쳐지는 자리가 있고, 합·평균·최댓값이 서로 다른 자리에서 합쳐진다.',
       cols: 1,
+      contract: {
+        page: '01_gnn_gentle_guide.md', slot: 'aggregate-collide', anchor: 'aggregation',
+        data: { graphs: ['G4'], ops: ['At'] },
+        frames: { count: 2, preset: 'wide', span: ['full', 'full'], safeArea: SAFE },
+        primitives: ['S', 'drawGrid'],
+        text: { maxChars: { heading: 34, note: 60, caption: 300 } },
+        fallback: {
+          declaresFrameCount: true,
+          numbers: ['A = {1, 1, 1}', 'B = {1}', 'A = {1, 3}', 'B = {2, 2}', '6으로 충돌'],
+          mustMention: ['충돌', '분리', '§5.4 ④'],
+          mustNotMention: []
+        }
+      },
       frames: function () { return frames; }
     };
   }
@@ -507,8 +543,9 @@
     }
     if (cfg.blocks) {
       cfg.blocks.forEach(function (b) { api.drawBlock(root, b); });
+      // gap 36 이면 이름표가 프레임 아래로 2 삐져나간다. 3 올려 안에 넣는다.
       api.drawFeatureAxisFlow(root, box, {
-        arrow: api.arrow, gap: 36, label: '특성 축 — W'
+        arrow: api.arrow, gap: 33, label: '특성 축 — W'
       });
     }
     if (cfg.extraRow) {
@@ -680,6 +717,24 @@
       falsify: 'Â와 W가 같은 축을 섞는다면 ④와 ⑤에서 격자의 같은 방향이 ' +
                '두 번 눌려야 한다. 한 번은 세로, 한 번은 가로다.',
       cols: 2,
+      contract: {
+        page: '01_gnn_gentle_guide.md', slot: 'lineage-strip', anchor: 'viz-lineage',
+        data: { graphs: ['G4'], ops: ['A', 'At', 'Ahat'] },
+        frames: {
+          count: 6, countByState: { shared: 6, per: 6 }, preset: 'strip',
+          span: ['auto', 'auto', 'auto', 'auto', 'auto', 'auto'],
+          safeArea: SAFE
+        },
+        primitives: ['S', 'drawBlock', 'drawFeatureAxisFlow', 'drawGrid', 'drawNodeAxisFlow'],
+        text: { maxChars: { heading: 34, note: 60, caption: 300 } },
+        fallback: {
+          declaresFrameCount: true,
+          numbers: ['[[1,0],[0,1],[1,1],[2,1]]', '[[1,' + MINUS + '1],[' + MINUS + '1,1]]',
+            '(0.000, 0.408, 0.408, 0.092)', '4개에서 16개로'],
+          mustMention: ['하위 단계', '되먹임 화살', '특성 축'],
+          mustNotMention: []
+        }
+      },
       variant: {
         name: 'w', legend: 'W 공유 여부', initial: 'shared',
         options: [
@@ -823,10 +878,10 @@
             });
           });
           note(root, api,
-            'Â₁₃ = ' + fx(o.Ahat[0][2], 3) +
-            ' 와 Â₂₄ = ' + fx(o.Ahat[1][3], 3) +
+            'Â₃₁ = ' + fx(o.Ahat[2][0], 3) +
+            ' 와 Â₄₂ = ' + fx(o.Ahat[3][1], 3) +
             ' — 받는 쪽 차수는 둘 다 2인데 계수가 다르다(송신자 차수 5 대 3).',
-            16, 190);
+            14, 190);
         }
       }
     ];
@@ -842,6 +897,26 @@
       falsify: '"정규화 = 평균"이 맞다면 ②와 ③의 행 합과 출력이 같아야 한다. ' +
                '②의 행 합만 1.00이다.',
       cols: 1,
+      contract: {
+        page: '02_kipf2017_gcn_guide.md', slot: 'norm-3up', anchor: 'viz-normalization',
+        data: { graphs: ['G4star'], ops: ['Ahat', 'Amean', 'At', 'dt'] },
+        frames: {
+          count: 4, preset: 'wide',
+          span: ['full', 'full', 'full', 'full'],
+          safeArea: SAFE
+        },
+        primitives: ['S', 'drawGraph', 'drawGrid'],
+        // ④의 주석 한 줄이 67자다 — 두 계수와 두 차수를 한 문장에 담아야 해서
+        // 쪼갤 수 없다. 이 그림의 note 천장만 70으로 올린다.
+        text: { maxChars: { heading: 34, note: 70, caption: 300 } },
+        fallback: {
+          declaresFrameCount: true,
+          numbers: ['0.316', '0.408', '4.25배', '1.75배',
+            '(17, 7, 4, 6, 6, 7)', '(1.41, 1.00, 0.82, 0.91, 0.82, 0.82)'],
+          mustMention: ['받는 쪽', '보내는 쪽'],
+          mustNotMention: []
+        }
+      },
       frames: function () { return frames; }
     };
   }
@@ -886,13 +961,20 @@
                  mx.toFixed(3) + ' / 최소 ' + mn.toFixed(3) +
                  (k >= 1 ? ' (' + (mx / mn).toFixed(1) + '배 차)' : ''),
         draw: function (root, api) {
-          var gg = placed(root, api, 0, 14);
+          // 제목을 y = 18 로 내리면 테 이름표와 같은 띠에 든다. 01 §5.4가 쓴 것과
+          // 같은 처방 — 그래프를 제목 아래로 12 더 내려 두 글자의 띠를 가른다.
+          // k = 0 은 테를 pad 16 으로 벌린다(아래 rings 참고). 그만큼 테 왼끝이
+          // 프레임 밖(x = −1)으로 나가므로 이 프레임만 그래프를 8 오른쪽으로 민다.
+          var gg = placed(root, api, k === 0 ? 8 : 0, 26);
+          // 다른 그림과 같은 y = 18. y = 11 은 글자 윗선이 프레임 위로 0.5 나간다.
           heading(root, api, 'k = ' + k + ' · (Â' +
-            (k === 1 ? '' : '^' + k) + ')₃ⱼ', 12, 11);
+            (k === 1 ? '' : '^' + k) + ')₃ⱼ', 12, 18);
           api.drawGraph(gg, {
             graph: g, arrow: api.arrow,
             roles: roles, values: vals, marks: marks,
-            rings: [{ members: inside, pad: 9, label: 'k ≤ ' + k }],
+            // k = 0 의 테는 중심 하나만 감싸므로 pad 9 에서는 테 이름표가
+            // 그 정점의 걸음표 "0h" 위에 얹힌다. 이 프레임만 테를 7 벌린다.
+            rings: [{ members: inside, pad: k === 0 ? 16 : 9, label: 'k ≤ ' + k }],
             edgeState: function (a, b) {
               return (dist[a] <= k && dist[b] <= k) ? 'on' : 'off';
             }
@@ -974,6 +1056,23 @@
       falsify: '"k층이면 k-hop 정점이 균등하게 들어온다"가 맞다면 k = 3 프레임의 네 숫자가 ' +
                '같아야 한다. 가장 작은 값이 가장 큰 값의 6분의 1 아래다.',
       cols: 2,
+      contract: {
+        page: '03_bridge_mlp_to_gcn.md', slot: 'depth-frames', anchor: 'receptive-field',
+        data: { graphs: ['G4', 'G4tri'], ops: ['Ahat', 'idx'] },
+        frames: {
+          count: 5, preset: 'tall',
+          span: ['auto', 'auto', 'auto', 'auto', 'full'],
+          safeArea: SAFE
+        },
+        primitives: ['S', 'drawGraph', 'drawGrid'],
+        text: { maxChars: { heading: 34, note: 60, caption: 300 } },
+        fallback: {
+          declaresFrameCount: true,
+          numbers: ['0.347', '0.329', '0.159', '0.056', '0.20', '0.020'],
+          mustMention: ['수용 집합', '연속량'],
+          mustNotMention: []
+        }
+      },
       frames: function () { return frames; }
     };
   }
@@ -1015,6 +1114,23 @@
       falsify: '수렴이 "값이 0으로 죽는 것"이라면 k = 8 격자가 비어야 한다. ' +
                '값은 남고 행 사이 구별만 사라진다.',
       cols: 1,
+      contract: {
+        page: '02_kipf2017_gcn_guide.md', slot: 'oversmoothing', anchor: 'viz-oversmoothing',
+        data: { graphs: ['G4'], ops: ['Ahat', 'dt'] },
+        frames: { count: 2, preset: 'wide', span: ['full', 'full'], safeArea: SAFE },
+        primitives: ['S', 'drawAxis', 'drawGrid'],
+        // ②의 제목이 36자(수식 한 줄)이고 ①의 주석이 70자다. 둘 다 한 덩이라
+        // 쪼개면 뜻이 끊긴다 — 이 그림의 천장만 40 / 70으로 올린다.
+        text: { maxChars: { heading: 40, note: 70, caption: 300 } },
+        fallback: {
+          declaresFrameCount: true,
+          // √3 : √2 의 값은 네 자리 소수라 명세에 적을 수 없다. 비 자체를 말로 건다.
+          numbers: ['(2.225, 2.633, 1.908, 2.816)', '(2.615, 2.615, 2.135, 2.135)',
+            '2.251', '0.067'],
+          mustMention: ['단조 감소', '1차원 축', '√3 : √2'],
+          mustNotMention: []
+        }
+      },
       frames: function () {
         return [
           {
@@ -1148,6 +1264,148 @@
     }, ring);
   }
 
+  /* ── A0. spec-recap — S3 ──────────────────────────────── */
+  /*
+   * S3에 이르면 독자가 셋을 잃어버린다 — G4의 배선, 03에서 만든 원본 A, S1에서
+   * 정점마다 붙인 x. 셋을 다시 찾으러 위로 스크롤하거나 03으로 돌아가는 왕복을
+   * 없애는 것이 이 그림의 유일한 임무다. 새 사실은 하나도 만들지 않고, 다음 줄이
+   * 출발하는 자리(D − A = Δ)까지만 간다.
+   */
+
+  function figSpecRecap() {
+    var L = NI3.LAYOUT || {};
+    var HALF = (L.frame && L.frame.half && L.frame.half.w) || 330;
+    var VB = [0, 0, HALF, 176];
+
+    var g = G.G4, o = gr.ops(g);
+    var x = signalOf(g);
+    // D = diag(d), Δ = D − A. 둘 다 등록부의 A·d에서 만든다.
+    var D = o.A.map(function (r, i) {
+      return r.map(function (v, j) { return i === j ? o.d[i] : 0; });
+    });
+    var Delta = la.msub(D, o.A);
+
+    var labels = rowLabelsOf(g);
+    var tX = textMat(colMat(x), 0);
+    var tA = textMat(o.A, 0);
+    var tD = textMat(D, 0);
+    var tDelta = textMat(Delta, 0);
+
+    var edgeText = g.edges.map(function (e) {
+      return '(' + e[0] + ', ' + e[1] + ')';
+    }).join(', ');
+    function rowText(T) {
+      return T.map(function (r, i) {
+        return labels[i] + ' = (' + r.join(', ') + ')';
+      }).join(', ');
+    }
+
+    // 화면에 찍히는 숫자 전부. 계약의 fallback.numbers 는 손으로 적지 않는다.
+    var shown = [];
+    [tX, tA, tD, tDelta].forEach(function (T) {
+      T.forEach(function (r) {
+        r.forEach(function (s) { if (shown.indexOf(s) < 0) shown.push(s); });
+      });
+    });
+
+    var frames = [];
+
+    frames.push({
+      preset: 'half',
+      vb: VB,
+      title: '① G4와 신호 x',
+      desc: '① G4 — 정점 넷 ' + labels.join(', ') + '와 간선 셋 ' + edgeText +
+            '을 원반과 현으로 그리고, 원반 안에 신호 값 ' +
+            tX.map(function (r) { return r[0]; }).join(', ') + '을 적는다. 오른쪽에는 x = ' +
+            vecText(x, 0) + '를 칸 넷의 세로 한 줄로 세운다 — 정점별 스칼라 신호이고, ' +
+            'i번째 행이 원반 v' + sub(1) + '..v' + sub(4) + ' 순서 그대로다.',
+      caption: '① 03에서 쓰던 그 배선 그대로다. 오른쪽 칸 한 줄이 신호 x이고, i번째 행의 숫자가 ' +
+               '원반 vᵢ 안의 숫자와 같다.',
+      draw: function (root, api) {
+        heading(root, api, 'G4 — 03에서 이어 쓰는 그 그래프', 14, 18);
+        var gg = placed(root, api, 0, 12);
+        var vals = {}, roles = {}, names = {};
+        g.nodes.forEach(function (id, i) {
+          vals[id] = tX[i][0];
+          roles[id] = 'active';
+          names[id] = labels[i];
+        });
+        api.drawGraph(gg, {
+          graph: g, arrow: api.arrow, roles: roles, values: vals, names: names
+        });
+        api.drawGrid(root, {
+          x: 262, y: 44, cw: 48, ch: 24,
+          nums: colMat(x), text: tX,
+          rowLabels: labels, colLabels: ['x']
+        });
+        note(root, api, 'x — 정점별 스칼라 신호 (정점마다 숫자 하나)', 14, 166);
+      }
+    });
+
+    frames.push({
+      preset: 'half',
+      vb: VB,
+      title: '② 원본 A와 차수 D — Δ = D − A',
+      desc: '② 네 줄 네 칸짜리 격자 셋을 D − A = Δ 순으로 늘어놓는다. 원본 인접 행렬 A의 행은 ' +
+            '순서대로 ' + rowText(tA) + '이고, 행과 열의 순서가 둘 다 ' + labels.join(', ') +
+            '다. D는 차수 d = ' + vecText(o.d, 0) + '을 대각에 놓은 것이고, Δ = D − A의 행은 ' +
+            rowText(tDelta) + '이다. 다음 줄의 Δx가 이 Δ에서 출발한다.',
+      caption: '② A는 03 §2.1에서 만든 원본이다. 자기 연결을 더하기 전이므로 대각이 전부 0이고, ' +
+               '거기에 차수 D를 얹은 것이 Δ = D − A다.',
+      draw: function (root, api) {
+        heading(root, api, 'D ' + MINUS + ' A = Δ · A는 03 §2.1의 원본 인접 행렬', 14, 18);
+        api.drawGrid(root, {
+          x: 32, y: 52, cw: 19, ch: 19,
+          nums: D, text: tD,
+          rowLabels: labels, colLabels: labels, heading: 'D — 차수'
+        });
+        api.drawGrid(root, {
+          x: 132, y: 52, cw: 19, ch: 19,
+          nums: o.A, text: tA,
+          rowLabels: labels, colLabels: labels, heading: MINUS + ' A (원본)'
+        });
+        api.drawGrid(root, {
+          x: 238, y: 52, cw: 19, ch: 19,
+          nums: Delta, text: tDelta,
+          rowLabels: labels, colLabels: labels, heading: '= Δ',
+          negPattern: api.negPattern
+        });
+        note(root, api, 'D = diag(d) · d = ' + vecText(o.d, 0), 14, 144);
+        note(root, api, 'Δ = D ' + MINUS + ' A — 다음 줄의 Δx가 여기서 출발한다', 14, 160);
+      }
+    });
+
+    return {
+      id: 'spec-recap',
+      title: '지금 손에 든 것 — G4 · A · x',
+      badge: 'G4 · Δ = D ' + MINUS + ' A',
+      caption: '새 사실은 없다. 03의 배선 G4, 03 §2.1의 원본 인접 행렬 A, S1에서 정점마다 붙인 ' +
+               '신호 x를 한 화면에 모아 두고, 다음 줄이 출발하는 Δ = D ' + MINUS + ' A까지만 간다.',
+      falsify: '이 그림이 03·S1과 같은 것을 가리킨다면 A의 1이 현 ' + edgeText +
+               '과 정확히 같은 자리에 있어야 하고, x의 i번째 칸이 원반 vᵢ 안의 숫자와 같아야 한다. ' +
+               '세 간선과 네 칸이 모두 일치한다.',
+      cols: 2,
+      contract: {
+        page: '05_spectral_bridge.md', slot: 'spec-recap', anchor: 's3',
+        data: { graphs: ['G4'], ops: ['A', 'd'] },
+        frames: {
+          count: frames.length, preset: 'half',
+          span: frames.map(function () { return 'auto'; }),
+          safeArea: L.safeArea || 6
+        },
+        primitives: ['drawGraph', 'drawGrid', 'S'],
+        text: { maxChars: { heading: 34, note: 52, caption: 240 } },
+        fallback: {
+          declaresFrameCount: true,
+          numbers: shown,
+          mustMention: ['정점별 스칼라 신호'],
+          mustNotMention: []
+        }
+      },
+      frames: function () { return frames; }
+    };
+  }
+
   /* ── A1. spec-eigen — S5 ──────────────────────────────── */
 
   function figSpecEigen() {
@@ -1231,6 +1489,29 @@
       falsify: '이 넷이 정말 모양이 안 변하는 신호라면 각 프레임의 검산 줄 좌변과 우변이 ' +
                '같아야 한다. 네 프레임 모두 같다. ① 프레임에서만 두 열의 비율이 어긋난다.',
       cols: 2,
+      contract: {
+        page: '05_spectral_bridge.md', slot: 'spec-eigen', anchor: 's5',
+        data: { graphs: ['G4'], ops: ['L', 'idx'] },
+        frames: {
+          count: 5, preset: 'half',
+          span: ['full', 'auto', 'auto', 'auto', 'auto'],
+          safeArea: SAFE
+        },
+        primitives: ['S', 'drawGraph', 'drawGrid'],
+        text: { maxChars: { heading: 34, note: 60, caption: 300 } },
+        fallback: {
+          declaresFrameCount: true,
+          numbers: [
+            '(' + MINUS + '2.121, ' + MINUS + '1.328, 2.293, 2.586)',
+            '(0.577, 0.577, 0.408, 0.408)',
+            '(0.408, ' + MINUS + '0.408, 0.577, ' + MINUS + '0.577)',
+            '(0.408, 0.408, ' + MINUS + '0.577, ' + MINUS + '0.577)',
+            '(0.577, ' + MINUS + '0.577, ' + MINUS + '0.408, 0.408)'
+          ],
+          mustMention: ['검산 한 줄', '고유벡터가 아니다'],
+          mustNotMention: []
+        }
+      },
       frames: function () { return frames; }
     };
   }
@@ -1325,6 +1606,20 @@
       falsify: 'λ 가 거칢 눈금이 아니라면 ① 마지막 열과 ② 축의 눈금이 어긋나야 한다. ' +
                '네 줄이 모두 일치한다.',
       cols: 1,
+      contract: {
+        page: '05_spectral_bridge.md', slot: 'spec-lambda', anchor: 's6',
+        data: { graphs: ['G4'], ops: ['L', 'd', 'idx'] },
+        frames: { count: 2, preset: 'wide', span: ['full', 'full'], safeArea: SAFE },
+        primitives: ['S', 'drawAxis'],
+        text: { maxChars: { heading: 34, note: 60, caption: 300 } },
+        fallback: {
+          declaresFrameCount: true,
+          numbers: ['0, 3, 9, 12', '0, 0.50, 1.50, 2.00',
+            '(0.577, 0.577, 0.408, 0.408)', '(1.414, 1.414, 1, 1)'],
+          mustMention: ['1차원 축', 'u₁, u₂, u₃, u₄'],
+          mustNotMention: []
+        }
+      },
       frames: function () { return frames; }
     };
   }
@@ -1419,6 +1714,25 @@
       falsify: '네 방향이 서로 수직이 아니라면 ②의 두 합계 중 적어도 하나가 어긋나야 한다. ' +
                '둘 다 맞는다.',
       cols: 1,
+      contract: {
+        page: '05_spectral_bridge.md', slot: 'spec-basis', anchor: 's7',
+        data: { graphs: ['G4'], ops: ['L'] },
+        frames: { count: 2, preset: 'wide', span: ['full', 'full'], safeArea: SAFE },
+        primitives: ['S', 'drawBars', 'drawGrid'],
+        text: { maxChars: { heading: 34, note: 60, caption: 300 } },
+        fallback: {
+          declaresFrameCount: true,
+          // 폴백의 두 합계는 네 자리 소수라 명세에 베껴 적을 수 없다(§8 규약).
+          // 숫자 대신 "무엇과 같은가"를 문장으로 묶어 둔다.
+          numbers: [
+            '(1, 2, 3, 4)',
+            '(4.590, ' + MINUS + '0.986, ' + MINUS + '2.817, ' + MINUS + '0.169)',
+            '95.6%', '26.4%', '70.2%'
+          ],
+          mustMention: ['x의 제곱합 30과 같다', 'S4의 거칢과 같다', '재정렬하지 않는다'],
+          mustNotMention: []
+        }
+      },
       frames: function () { return frames; }
     };
   }
@@ -1567,6 +1881,23 @@
       falsify: '식 (3)이 정점 축 연산과 무관한 별개의 정의라면 ③의 두 끝 격자가 달라야 한다. ' +
                '네 자리 소수까지 같다.',
       cols: 1,
+      contract: {
+        page: '05_spectral_bridge.md', slot: 'spec-filter', anchor: 's8',
+        data: { graphs: ['G4'], ops: ['L', 'Ssym', 'd', 'idx'] },
+        frames: { count: 3, preset: 'wide', span: ['full', 'full', 'full'], safeArea: SAFE },
+        primitives: ['S', 'drawBars', 'drawGraph', 'drawGrid'],
+        text: { maxChars: { heading: 34, note: 60, caption: 300 } },
+        fallback: {
+          declaresFrameCount: true,
+          numbers: [
+            '(4.590, ' + MINUS + '0.986, ' + MINUS + '2.817, ' + MINUS + '0.169)',
+            '1.00, 0.50, ' + MINUS + '0.50, ' + MINUS + '1.00',
+            '(3.121, 3.328, 0.707, 1.414)', '(1, 0, 0, 0)', '1.874'
+          ],
+          mustMention: ['고유분해를 쓰지 않는다', '√2 : √2 : 1 : 1'],
+          mustNotMention: []
+        }
+      },
       frames: function () { return frames; }
     };
   }
@@ -1631,6 +1962,20 @@
       falsify: 'K차 다항식이 K걸음 밖을 본다면 k = 2 프레임의 v4 칸이 0이 아니어야 한다. ' +
                '0이다. 그리고 k = 3에서 처음으로 0이 아니게 된다.',
       cols: 1,
+      contract: {
+        page: '05_spectral_bridge.md', slot: 'spec-hop', anchor: 's10',
+        data: { graphs: ['G4'], ops: ['L', 'idx'] },
+        frames: { count: 3, preset: 'wide', span: ['full', 'full', 'full'], safeArea: SAFE },
+        primitives: ['S', 'drawGraph', 'drawGrid'],
+        text: { maxChars: { heading: 34, note: 60, caption: 300 } },
+        fallback: {
+          declaresFrameCount: true,
+          numbers: ['k = 1, 2, 3', '(' + MINUS + '0.707, 0, 1, 0)',
+            MINUS + '0.250', '{v3, v1, v2}'],
+          mustMention: ['테 밖 칸', '3행'],
+          mustNotMention: []
+        }
+      },
       frames: function () { return frames; }
     };
   }
@@ -1640,7 +1985,6 @@
   function figSpecCheby() {
     var g = G.G4, o = gr.ops(g);
     var T = la.cheby(o.Ltilde, 2);
-    var eigT = la.jacobiEig(o.Ltilde);
     var lm = gr.ops(G.G4circ).lmax;
     var names = ['T₀(L̃) = I', 'T₁(L̃) = L̃', 'T₂(L̃) = 2L̃² − I'];
     var scale = 1;
@@ -1654,11 +1998,14 @@
       });
       var edgeVal = function (a, b) { return M[o.idx[a]][o.idx[b]]; };
       var full = k === 2;
-      var rescaled = eigT.values;
 
       return {
         span: full ? 'full' : undefined,
-        vb: full ? [0, 0, 452, 206] : [0, 0, 330, 176],
+        // 세 프레임이 같은 viewBox와 같은 배치를 쓴다. ③이 가로를 다 차지해도
+        // 정점은 ①②와 같은 자리에 찍힌다 — 읽는 이가 프레임을 옮길 때마다
+        // 정점을 다시 찾지 않아도 된다. 재척도 눈금 축은 본문(S11)이 이미
+        // 한 줄로 찍으므로 여기서 그리지 않는다.
+        vb: [0, 0, 330, 176],
         title: ORD[k] + ' ' + names[k],
         desc: ORD[k] + ' ' + names[k] + ' — 자기 고리가 ' +
               g.nodes.map(function (id) {
@@ -1667,10 +2014,7 @@
               g.edges.map(function (e) { return num(edgeVal(e[0], e[1]), 3); }).join(', ') +
               ' 이다.' + (full
                 ? ' 그래서 2-hop 쌍 (1,4)와 (2,3)에 ' + num(M[0][3], 3) +
-                  ' 이 붙고, 그래프에 없던 쌍을 잇는 점찍은 현 두 개가 등장한다. ' +
-                  '아래에는 재척도된 눈금 ' +
-                  rescaled.map(function (v) { return num(v, 2); }).join(', ') +
-                  ' 을 1차원 축 한 줄로 찍는다.'
+                  ' 이 붙고, 그래프에 없던 쌍을 잇는 점찍은 현 두 개가 등장한다.'
                 : ' 선 굵기는 계수 크기에 맞춘다.'),
         caption: full
           ? ORD[k] + ' 1-hop 세 쌍이 전부 0이고 2-hop 두 쌍에 ' + dot3(M[0][3]) +
@@ -1684,7 +2028,7 @@
               num(M[0][0], 3) + ' 이다.'
             : ORD[k] + ' 1차는 1-hop 간선에만 값을 준다. λ_max = 2 인 G4에서 L̃ = L − I = −S 다.'),
         draw: function (root, api) {
-          var gg = placed(root, api, full ? 30 : 0, full ? 16 : 34);
+          var gg = placed(root, api, 0, 34);
           var roles = {};
           g.nodes.forEach(function (id) { roles[id] = 'active'; });
           api.drawGraph(gg, {
@@ -1701,14 +2045,6 @@
                 width: Math.abs(M[o.idx[2]][o.idx[3]]) / scale, labelOff: -22 }
             ] : null
           });
-          if (full) {
-            api.drawAxis(root, {
-              x: 96, y: 164, w: 300, min: -1.15, max: 1.15,
-              rows: [{ label: 'L̃', marks: rescaled.map(function (v) { return { v: v }; }) }],
-              ticks: rescaled.map(function (v) { return { v: v, label: num(v, 2) }; }),
-              caption: '재척도 눈금'
-            });
-          }
         }
       };
     }
@@ -1724,6 +2060,21 @@
       falsify: '"K차 다항식 = K걸음 전부"가 맞다면 ③에서 1-hop 세 간선이 0이 아니어야 한다. ' +
                '셋 다 0이다.',
       cols: 2,
+      contract: {
+        page: '05_spectral_bridge.md', slot: 'spec-cheby', anchor: 's11',
+        data: { graphs: ['G4', 'G4circ'], ops: ['Ltilde', 'lmax', 'idx'] },
+        frames: { count: 3, preset: 'half', span: ['auto', 'auto', 'full'], safeArea: SAFE },
+        primitives: ['S', 'drawGraph'],
+        text: { maxChars: { heading: 34, note: 60, caption: 300 } },
+        fallback: {
+          declaresFrameCount: true,
+          numbers: ['1.000', MINUS + '.500', MINUS + '.707', '.500', '.707'],
+          mustMention: ['점찍은 현'],
+          // ③의 재척도 눈금 축은 본문(S11)이 맡기로 하고 그림에서 뺐다.
+          // 폴백이 없는 축을 말하면 무JS 독자가 있지도 않은 것을 찾게 된다.
+          mustNotMention: ['축', '눈금']
+        }
+      },
       frames: function () { return frames; }
     };
   }
@@ -1760,8 +2111,8 @@
             ')과 그 오른쪽에 k = 0, 1, 4, 8의 결과 격자 네 개. ' +
             res.map(function (v, i) { return vecText(v, DEC[KS[i]]); }).join(' → ') +
             '로 자릿수가 늘어난다.',
-      caption: '① 원반 위 계수 가운데 1을 넘는 것이 하나도 없는데 결과의 자릿수가 ' +
-               '세 번 늘어난다.',
+      caption: '① 원반 위 계수 가운데 1을 넘는 것이 하나도 없는데 결과의 정수 자릿수가 ' +
+               '한 자리에서 세 자리로 자란다.',
       draw: function (root, api) {
         var gg = placed(root, api, 0, 14);
         var roles = {}, loops = {};
@@ -1834,6 +2185,20 @@
                '있어야 한다. 없다. 원인은 ②의 오른쪽 끝 눈금 2.00이다. 다만 두 줄의 눈금이 ' +
                '겹치는 것은 G4의 사정이지 동치의 증거가 아니다.',
       cols: 1,
+      contract: {
+        page: '05_spectral_bridge.md', slot: 'spec-explode', anchor: 's13',
+        data: { graphs: ['G4'], ops: ['Iplus', 'L', 'idx'] },
+        frames: { count: 2, preset: 'wide', span: ['full', 'full'], safeArea: SAFE },
+        primitives: ['S', 'drawAxis', 'drawGraph', 'drawGrid'],
+        text: { maxChars: { heading: 34, note: 60, caption: 300 } },
+        fallback: {
+          declaresFrameCount: true,
+          numbers: ['1.000', '(1, 2, 3, 4)', '(4.12, 5.33, 3.71, 5.41)',
+            '(668, 689, 465, 494)', '0, 0.50, 1.50, 2.00', '2⁸ = 256'],
+          mustMention: ['평평한 모드', '1차원 축'],
+          mustNotMention: []
+        }
+      },
       frames: function () { return frames; }
     };
   }
@@ -1893,6 +2258,19 @@
       falsify: 'renormalization이 자기 고리만 줄인 것이라면 ①과 ②의 간선 숫자가 같아야 한다. ' +
                '셋 다 바뀐다.',
       cols: 2,
+      contract: {
+        page: '05_spectral_bridge.md', slot: 'spec-swap', anchor: 's14',
+        data: { graphs: ['G4'], ops: ['Ahat', 'Iplus', 'd', 'dt', 'idx'] },
+        frames: { count: 2, preset: 'half', span: ['auto', 'auto'], safeArea: SAFE },
+        primitives: ['S', 'drawGraph'],
+        text: { maxChars: { heading: 34, note: 60, caption: 300 } },
+        fallback: {
+          declaresFrameCount: true,
+          numbers: ['1.000', '.500', '.707', '.333', '.408', 'd̃ = (3, 3, 2, 2)'],
+          mustMention: ['자기 고리', '배선은 한 선도 바뀌지 않았고'],
+          mustNotMention: []
+        }
+      },
       frames: function () { return [frameOf(0), frameOf(1)]; }
     };
   }
@@ -2008,6 +2386,24 @@
                '다르므로, Â 가 식 (3)의 필터라면 그 모드는 정확히 L 의 네 모드여야 한다. ' +
                '③이 검사하는 것이 그 조건이고, 막대가 하나가 아니면 필터가 아니다.',
       cols: 1,
+      contract: {
+        page: '05_spectral_bridge.md', slot: 'spec-mu', anchor: 's15',
+        data: { graphs: ['G4'], ops: ['Ahat', 'Iplus', 'L', 'dt'] },
+        frames: { count: 3, preset: 'wide', span: ['full', 'full', 'full'], safeArea: SAFE },
+        primitives: ['S', 'drawAxis', 'drawBars', 'drawGrid'],
+        text: { maxChars: { heading: 34, note: 60, caption: 300 } },
+        fallback: {
+          declaresFrameCount: true,
+          numbers: [
+            MINUS + '0.229, 0.167, 0.729, 1.000',
+            '(2.22, 2.63, 1.91, 2.82)', '(2.59, 2.64, 2.09, 2.18)',
+            '(1.732, 1.732, 1.414, 1.414)',
+            '3.155, 0.000, ' + MINUS + '0.219, 0.000'
+          ],
+          mustMention: ['0이 아닌 막대가 둘이다'],
+          mustNotMention: []
+        }
+      },
       frames: function () { return frames; }
     };
   }
@@ -2208,6 +2604,25 @@
       falsify: '"라벨 없는 정점은 학습에 쓸모없다"가 맞다면 ④ 프레임에서 v₁, v₄의 ' +
                '숫자가 그대로여야 한다. 둘 다 바뀐다.',
       cols: 1,
+      contract: {
+        page: '02_kipf2017_gcn_guide.md', slot: 'semi-mask', anchor: 'viz-semi-supervised',
+        data: { graphs: ['G4'], ops: ['Ahat', 'idx'] },
+        frames: {
+          count: 4, preset: 'wide',
+          span: ['full', 'full', 'full', 'full'],
+          safeArea: SAFE
+        },
+        primitives: ['S', 'drawBlock', 'drawGraph', 'drawGrid'],
+        // ①의 제목은 forward 식 한 줄(46자)이다. 식을 자르면 그림의 주제가
+        // 사라지므로 이 그림의 heading 천장만 50으로 올린다.
+        text: { maxChars: { heading: 50, note: 60, caption: 300 } },
+        fallback: {
+          declaresFrameCount: true,
+          numbers: ['v1, v4', 'v2, v3', '2층'],
+          mustMention: ['지워지지 않고', 'gradient', 'transductive'],
+          mustNotMention: []
+        }
+      },
       frames: function () { return frames; }
     };
   }
@@ -2223,6 +2638,7 @@
     'oversmoothing': figConverge,
     'semi-mask': figSemi,
     // 05 스펙트럼 다리 — 걸음 순서대로. 02의 'spectral' 한 장이 아홉 장으로 갈라졌다.
+    'spec-recap': figSpecRecap,
     'spec-eigen': figSpecEigen,
     'spec-lambda': figSpecLambda,
     'spec-basis': figSpecBasis,

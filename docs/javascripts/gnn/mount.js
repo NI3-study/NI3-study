@@ -43,6 +43,9 @@
     // 좁은 화면에서 글자가 죽지 않는다(넓으면 좌→우, 좁으면 위→아래).
     var MIN = { 1: '100%', 2: '16rem', 3: '11rem' };
     fig.style.setProperty('--gnn-min', MIN[spec.cols] || '16rem');
+    // 무대 최소 폭도 CSS에 적지 않고 등록부에서 내보낸다 — 프레임을 넓히면
+    // 스타일시트를 고치지 않아도 배율 ≥ 1 이 따라온다.
+    fig.style.setProperty('--gnn-stage-min', NI3.LAYOUT.minStageWidth + 'px');
     slot.insertBefore(fig, slot.firstChild);
 
     Array.prototype.forEach.call(

@@ -8,8 +8,19 @@
  *   경로 C — 손으로 유도한 닫힌 형태(1/18, 25/72, 고유값 0·0.5·1.5·2 등)
  *
  * 셋이 어긋나면 실패한다. 실행: node tools/verify-figures.mjs
+ *
+ * 인자 없이 부르면 예전과 똑같이 전부 돈다. 아래 플래그는 "고친 것만 빨리 보기"와
+ * "게이트 조이기" 두 가지에만 쓴다.
+ *
+ *   --only <id[,id]>   그림별 검사를 그 id들로 제한한다 (전역 규약 검사는 그대로 돈다)
+ *   --file <path>      그 문서의 검사와 그 문서에 걸린 그림만 본다
+ *   --list             등록된 그림 id를 줄마다 하나씩 찍고 0으로 끝낸다
+ *   --quiet            표준출력을 닫는다 — 실패(FAIL)와 경고(WARN)만 남는다
+ *   --warn-as-error    WARN 한 건도 실패로 센다
+ *
+ * 모르는 플래그는 사용법을 stderr로 찍고 2로 끝난다(1은 "검사 실패"의 자리다).
  */
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { createContext, runInContext } from 'node:vm';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -17,14 +28,129 @@ import { dirname, join } from 'node:path';
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const EPS = 5e-4;
 
+/* ── CLI ───────────────────────────────────────────────
+ *
+ * 필터는 검사 코드를 건드리지 않는다. 검사 이름의 규약이 곧 필터다:
+ * "<그림 id>: …" 는 그 그림의 검사, "01 …"·"d01: …" 는 그 문서의 검사,
+ * 접두사가 없는 것은 전역 규약 검사여서 어떤 필터에서도 돈다.
+ */
+
+const USAGE = [
+  '사용법: node tools/verify-figures.mjs [옵션]',
+  '  --only <id[,id]>   그림별 검사를 그 id들로 제한한다',
+  '  --file <path>      그 문서(docs/*.md)의 검사와 거기 걸린 그림만 본다',
+  '  --list             등록된 그림 id를 찍고 끝낸다',
+  '  --quiet            실패와 경고만 남긴다',
+  '  --warn-as-error    WARN도 실패로 센다'
+].join('\n');
+
+/** 등록부를 VM에 올리기 전에도 id가 필요하다. figures.js의 등록 블록을 그대로 읽는다. */
+function figureIds() {
+  const src = readFileSync(join(ROOT, 'docs/javascripts/gnn/figures.js'), 'utf8');
+  const m = /NI3\.figures\s*=\s*\{([\s\S]*?)\n\s*\};/.exec(src);
+  return m ? [...m[1].matchAll(/'([a-z0-9-]+)'\s*:/g)].map((x) => x[1]) : [];
+}
+const docFiles = () => readdirSync(join(ROOT, 'docs')).filter((n) => n.endsWith('.md'));
+
+function parseArgs(argv) {
+  const opt = { only: null, file: null, list: false, quiet: false, warnAsError: false };
+  const die = (msg) => { console.error(`${msg}\n${USAGE}`); process.exit(2); };
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === '--only') {
+      const ids = String(argv[++i] || '').split(',').map((s) => s.trim()).filter(Boolean);
+      if (!ids.length) die('--only 에 그림 id가 없다');
+      const unknown = ids.filter((id) => !figureIds().includes(id));
+      if (unknown.length) die(`--only: 등록되지 않은 그림 id — ${unknown.join(', ')}`);
+      opt.only = new Set(ids);
+    } else if (a === '--file') {
+      const f = String(argv[++i] || '').replace(/\\/g, '/').split('/').pop();
+      if (!docFiles().includes(f)) die(`--file: docs/ 안의 .md 가 아니다 — ${argv[i]}`);
+      opt.file = f;
+    } else if (a === '--list') opt.list = true;
+    else if (a === '--quiet') opt.quiet = true;
+    else if (a === '--warn-as-error') opt.warnAsError = true;
+    else if (a === '--help' || a === '-h') { console.log(USAGE); process.exit(0); }
+    else die(`알 수 없는 인자: ${a}`);
+  }
+  return opt;
+}
+
+const ARGS = parseArgs(process.argv.slice(2));
+if (ARGS.list) { for (const id of figureIds()) console.log(id); process.exit(0); }
+// quiet는 표준출력만 닫는다. FAIL(stderr)과 WARN(stderr)은 그대로 보인다.
+if (ARGS.quiet) console.log = () => {};
+
+const FIG_IDS = new Set(figureIds());
+/** 문서 검사의 이름표 → 파일. 파일 이름이 바뀌어도 번호 접두사를 따라간다. */
+const DOC_OF = { idx: 'index.md', index: 'index.md' };
+for (const f of docFiles()) {
+  const n = (f.match(/^(\d+)_/) || [])[1];
+  if (n) { DOC_OF[n] = f; DOC_OF['d' + n] = f; }
+}
+
+/** 그림이 실린 문서. contract.page가 있으면 그것이, 없으면 마크업의 슬롯 위치가 답이다. */
+const PAGE_OF = new Map();
+function pageOfFigure(id) {
+  if (PAGE_OF.has(id)) return PAGE_OF.get(id);
+  let page = null;
+  try { page = (NI3.figures[id]().contract || {}).page || null; }
+  catch { /* 등록부가 아직 안 올라왔거나 계약이 없다 — 마크업으로 떨어진다 */ }
+  if (!page) {
+    for (const f of docFiles()) {
+      if (readFileSync(join(ROOT, 'docs', f), 'utf8').includes(`data-gnn-fig="${id}"`)) { page = f; break; }
+    }
+  }
+  PAGE_OF.set(id, page);
+  return page;
+}
+
+function targetOf(name) {
+  // mathLint처럼 "docs/04_exercises.md:159 …" 로 자리를 밝히는 검사.
+  const p = /^docs\/([0-9a-z_]+\.md)/.exec(name);
+  if (p) return { doc: p[1] };
+  const m = /^([a-z0-9][a-z0-9-]*)\s*:/.exec(name);
+  if (m && FIG_IDS.has(m[1])) return { fig: m[1] };
+  if (m && DOC_OF[m[1]]) return { doc: DOC_OF[m[1]] };
+  const d = /^(\d{2})[\s§]/.exec(name);
+  if (d && DOC_OF[d[1]]) return { doc: DOC_OF[d[1]] };
+  if (/^index /.test(name)) return { doc: 'index.md' };
+  return {};
+}
+
+let skipped = 0;
+function selected(name) {
+  if (!ARGS.only && !ARGS.file) return true;
+  const t = targetOf(name);
+  if (t.fig) {
+    if (ARGS.only && !ARGS.only.has(t.fig)) return false;
+    if (ARGS.file) {
+      const p = pageOfFigure(t.fig);
+      if (p && p !== ARGS.file) return false;
+    }
+    return true;
+  }
+  if (t.doc && ARGS.file && t.doc !== ARGS.file) return false;
+  return true;   // 대상을 못 읽는 검사는 전역 규약이다. 어떤 필터에서도 돈다.
+}
+
 let failures = 0;
 let checks = 0;
 
 function ok(name, cond, detail) {
+  if (!selected(name)) { skipped++; return; }
   checks++;
   if (cond) return;
   failures++;
   console.error(`  FAIL  ${name}${detail ? '  — ' + detail : ''}`);
+}
+
+/** 실패는 아니지만 기준선에 닿은 것. 종료 코드는 건드리지 않는다. */
+let warnings = 0;
+function warn(name, detail) {
+  if (!selected(name)) { skipped++; return; }
+  warnings++;
+  console.warn(`  WARN  ${name}${detail ? '  — ' + detail : ''}`);
 }
 
 function near(name, got, want, eps = EPS) {
@@ -202,6 +328,10 @@ function extentOf(el) {
     const cx = NUM(a.cx), cy = NUM(a.cy), r = NUM(a.r);
     return cx == null ? null : { x0: cx - r, x1: cx + r, y0: cy - r, y1: cy + r };
   }
+  if (el.tagName === 'ellipse') {
+    const cx = NUM(a.cx), cy = NUM(a.cy), rx = NUM(a.rx), ry = NUM(a.ry);
+    return cx == null ? null : { x0: cx - rx, x1: cx + rx, y0: cy - ry, y1: cy + ry };
+  }
   if (el.tagName === 'line') {
     const p = [NUM(a.x1), NUM(a.x2), NUM(a.y1), NUM(a.y2)];
     return p.some((v) => v == null) ? null
@@ -226,12 +356,48 @@ function extentOf(el) {
   return null;
 }
 
+/* ── 원시형 호출 계측 ───────────────────────────────────
+ *
+ * buildFigure가 frame.draw에 건네는 api는 primitives.js 안의 지역 함수 묶음이라
+ * NI3.px를 덮어써도 잡히지 않는다. 그래서 명세를 복제해 draw만 가로채고,
+ * 그 자리에서 실제로 건네받은 api 객체를 감싼다. 그림이 계약에 없는 원시형을
+ * 부르면 시각 어휘가 조용히 늘어난 것이므로 여기서 걸린다.
+ */
+const API_KEYS = new Set();
+let API_SAMPLE = null;
+
+function wrapApi(api, calls) {
+  if (!API_SAMPLE) API_SAMPLE = api;
+  const out = {};
+  for (const k of Object.keys(api)) {
+    API_KEYS.add(k);
+    const v = api[k];
+    out[k] = typeof v === 'function'
+      ? function (...args) { if (calls) calls.add(k); return v.apply(this, args); }
+      : v;
+  }
+  return out;
+}
+
+/** 명세는 그대로 두고 draw만 감싼 복제본. */
+function probed(spec, calls) {
+  const copy = Object.assign({}, spec);
+  copy.frames = (state) => spec.frames(state).map((f) => {
+    const g = Object.assign({}, f);
+    g.draw = (root, api) => f.draw(root, wrapApi(api, calls));
+    return g;
+  });
+  return copy;
+}
+
 /** <figure> 하나를 만들고 프레임별로 (svg, 요소 목록)을 돌려준다.
- *  placed()가 거는 translate를 누적해야 원반 표면 좌표가 맞는다. */
-function render(id) {
-  const fig = NI3.px.buildFigure(site(id));
+ *  placed()가 거는 translate를 누적해야 원반 표면 좌표가 맞는다.
+ *  겹침 검사가 "같은 <g> 형제"를 빼야 하므로 직속 부모도 같이 싣는다. */
+function render(id, calls) {
+  const spec = site(id);
+  const fig = NI3.px.buildFigure(calls ? probed(spec, calls) : spec);
   const out = [];
-  const walk = (el, into, tx, ty) => {
+  const walk = (el, into, tx, ty, parent) => {
     const tr = el.attrs && el.attrs.transform;
     const m = tr && /translate\(\s*(-?[\d.]+)[ ,]+(-?[\d.]+)\s*\)/.exec(tr);
     const dx = tx + (m ? parseFloat(m[1]) : 0);
@@ -241,35 +407,128 @@ function render(id) {
       const items = [];
       out.push({ svg: el, vb, items });
       // defs 안의 marker/pattern은 좌표계가 따로다. 기하 검사에서 뺀다.
-      for (const c of el.children) if (c.tagName !== 'defs') walk(c, items, 0, 0);
+      for (const c of el.children) if (c.tagName !== 'defs') walk(c, items, 0, 0, el);
       return;
     }
-    if (into) into.push({ el, dx, dy });
-    for (const c of el.children) walk(c, into, dx, dy);
+    if (into) into.push({ el, dx, dy, parent });
+    for (const c of el.children) walk(c, into, dx, dy, el);
   };
-  walk(fig, null, 0, 0);
+  walk(fig, null, 0, 0, null);
   return { fig, frames: out };
 }
 
-/** viewBox 밖으로 나간 요소를 찾는다. 글자 폭은 추정이므로 여유를 둔다. */
-function overflows(id) {
+/* ── 배치 토큰 ──────────────────────────────────────────
+ * registry.js의 NI3.LAYOUT이 정본이다. 아직 없으면 계약 문서의 기본값을 쓰되
+ * 그 사실을 한 줄로 알린다 — 조용히 다른 수를 쓰면 검사가 거짓말을 한다. */
+const LAYOUT_DEFAULT = { safeArea: 6, gap: { textText: 1.5 }, spans: ['auto', 'full'] };
+const LAY = NI3.LAYOUT || null;
+const SAFE_AREA = LAY && LAY.safeArea != null ? LAY.safeArea : LAYOUT_DEFAULT.safeArea;
+const GAP_TT = LAY && LAY.gap && LAY.gap.textText != null
+  ? LAY.gap.textText : LAYOUT_DEFAULT.gap.textText;
+const SPANS = (LAY && LAY.spans) || LAYOUT_DEFAULT.spans;
+if (!LAY) {
+  console.log('  NOTE  NI3.LAYOUT이 아직 없다 — safeArea 6 · gap.textText 1.5 · ' +
+    'spans [auto, full] 기본값으로 검사한다.');
+}
+
+const CLS = (el) => (el && el.attrs && el.attrs['class']) || '';
+
+/**
+ * viewBox 밖으로 나간 요소를 찾는다.
+ *
+ * 글자는 "대충 안쪽"이 아니라 엄격히 안쪽이어야 한다. 잘린 글자는 폭 추정
+ * 오차가 아니라 읽히지 않는 글자이기 때문이다. 그래서 여유 6px을 걷어내고
+ *   · viewBox 밖으로 한 점이라도 나가면 FAIL
+ *   · 안에는 있으나 안전 여백(safeArea)을 파먹으면 WARN
+ * 으로 나눈다.
+ *
+ * 도형은 두 갈래다. rect·circle·ellipse는 면을 가진 도형이어서 bbox가 곧 실물
+ * 경계다 — 여유를 주면 실제로 잘린 테를 놓친다(테 왼끝 x = −1 이 2px 슬랙에
+ * 숨었던 일이 있다). 그래서 면 도형은 여유 0, 엄격히 안쪽이어야 한다.
+ * line·path만 획이라 표시자 끝(marker tip)이 bbox 밖으로 조금 자라므로 2px을 준다.
+ */
+const AREA_TAGS = new Set(['rect', 'circle', 'ellipse']);
+function overflows(id, safeArea) {
+  const safe = safeArea == null ? SAFE_AREA : safeArea;
   const bad = [];
-  for (const fr of render(id).frames) {
+  const soft = [];
+  render(id).frames.forEach((fr, k) => {
     const [vx, vy, vw, vh] = fr.vb;
     for (const { el, dx, dy } of fr.items) {
       const e = extentOf(el);
       if (!e) continue;
-      const pad = e.text ? 6 : 2;
       const x0 = e.x0 + dx, x1 = e.x1 + dx, y0 = e.y0 + dy, y1 = e.y1 + dy;
-      if (x0 < vx - pad || x1 > vx + vw + pad || y0 < vy - pad || y1 > vy + vh + pad) {
-        bad.push(`${fr.svg.children[0].textContent.slice(0, 14)}… ${el.tagName}` +
-          `"${(el.textContent || '').slice(0, 16)}" ` +
-          `[${x0.toFixed(0)},${x1.toFixed(0)}]×[${y0.toFixed(0)},${y1.toFixed(0)}] ` +
-          `vb ${vw}×${vh}`);
+      const where = `f${k} ${fr.svg.children[0].textContent.slice(0, 12)}… ` +
+        `${el.tagName}"${(el.textContent || CLS(el)).slice(0, 16)}" ` +
+        `[${x0.toFixed(1)},${x1.toFixed(1)}]×[${y0.toFixed(1)},${y1.toFixed(1)}] ` +
+        `vb ${vw}×${vh}`;
+      if (e.text) {
+        const out = Math.max(vx - x0, x1 - (vx + vw), vy - y0, y1 - (vy + vh));
+        if (out > 0) {
+          bad.push(`${where} 밖으로 ${out.toFixed(2)}`);
+        } else {
+          const bite = Math.max(vx + safe - x0, x1 - (vx + vw - safe),
+            vy + safe - y0, y1 - (vy + vh - safe));
+          if (bite > 0) soft.push(`${where} 안전 여백 ${safe} 잠식 ${bite.toFixed(2)}`);
+        }
+      } else {
+        const slack = AREA_TAGS.has(el.tagName) ? 0 : 2;
+        const out = Math.max(vx - slack - x0, x1 - (vx + vw + slack),
+          vy - slack - y0, y1 - (vy + vh + slack));
+        if (out > 0) bad.push(`${where} 밖으로 ${out.toFixed(2)} (여유 ${slack})`);
       }
     }
-  }
-  return bad;
+  });
+  return { bad, soft };
+}
+
+/**
+ * 글자가 다른 것과 겹치는 자리를 찾는다. 겹친 글자는 둘 다 못 읽는다.
+ *
+ * 빼는 쌍:
+ *   · 직속 부모 <g>가 같은 쌍 — 원반과 그 안의 숫자처럼 한 덩이로 배치된 것
+ *   · .gnn-cell__fill · .gnn-cell__neg — 칸 글자 밑에 깔리라고 만든 채움
+ *   · .gnn-ring rect — 구성원을 통째로 감싸는 테. 겹치는 것이 본분이다
+ * 글자–도형은 면을 가진 rect·circle만 본다. line·path는 획이라 bbox가 대각선을
+ * 통째로 감싸므로 겹침 판정의 근거가 되지 못한다(오탐 300여 건).
+ */
+function overlaps(id, gap) {
+  const g = gap == null ? GAP_TT : gap;
+  const hits = [];
+  const tag = (o) =>
+    `${o.el.tagName}"${(o.el.textContent || CLS(o.el)).slice(0, 18)}"` +
+    `[${o.x0.toFixed(1)},${o.x1.toFixed(1)}]×[${o.y0.toFixed(1)},${o.y1.toFixed(1)}]`;
+
+  render(id).frames.forEach((fr, k) => {
+    const list = [];
+    for (const it of fr.items) {
+      const e = extentOf(it.el);
+      if (!e) continue;
+      list.push({
+        el: it.el, parent: it.parent, text: !!e.text,
+        x0: e.x0 + it.dx, x1: e.x1 + it.dx, y0: e.y0 + it.dy, y1: e.y1 + it.dy
+      });
+    }
+    for (let i = 0; i < list.length; i++) {
+      for (let j = i + 1; j < list.length; j++) {
+        const A = list[i], B = list[j];
+        if (!A.text && !B.text) continue;          // 도형끼리는 겹쳐도 된다
+        if (A.parent === B.parent) continue;       // 같은 <g> 안은 한 덩이다
+        if (!(A.text && B.text)) {
+          const s = A.text ? B : A;
+          if (s.el.tagName !== 'rect' && s.el.tagName !== 'circle') continue;
+          if (/\bgnn-cell__fill\b|\bgnn-cell__neg\b/.test(CLS(s.el))) continue;
+          if (s.el.tagName === 'rect' && /\bgnn-ring\b/.test(CLS(s.parent))) continue;
+        }
+        const ox = Math.min(A.x1, B.x1) - Math.max(A.x0, B.x0);
+        const oy = Math.min(A.y1, B.y1) - Math.max(A.y0, B.y0);
+        if (ox <= g || oy <= g) continue;          // 축마다 gap.textText 만큼은 봐준다
+        hits.push(`${id} f${k}: ${tag(A)} ↔ ${tag(B)} ` +
+          `겹침 ${ox.toFixed(1)}×${oy.toFixed(1)} (허용 ${g})`);
+      }
+    }
+  });
+  return hits;
 }
 
 /* ══ 1. G4 기본량 ═══════════════════════════════════════ */
@@ -419,10 +678,10 @@ near('raw 격차 = 4.25배', ratio(rawOut), 4.25, 1e-3);
 near('mean 격차 = 1.75배', ratio(meanOut), 1.75, 1e-3);
 near('sym 격차 = 2.83배', ratio(symOut), 2.832, 1e-3);
 ok('raw > sym > mean 순서', ratio(rawOut) > ratio(symOut) && ratio(symOut) > ratio(meanOut));
-near('Â₁₃ = 1/√10 ≈ 0.316 (송신자 차수 5)', G4S.Ahat[0][2], 1 / Math.sqrt(10));
-near('Â₂₄ = 1/√6 ≈ 0.408 (송신자 차수 3)', G4S.Ahat[1][3], 1 / S6);
+near('Â₃₁ = 1/√10 ≈ 0.316 (수신자 v₃, 송신자 v₁ 차수 5)', G4S.Ahat[2][0], 1 / Math.sqrt(10));
+near('Â₄₂ = 1/√6 ≈ 0.408 (수신자 v₄, 송신자 v₂ 차수 3)', G4S.Ahat[3][1], 1 / S6);
 ok('받는 쪽 차수가 같은데 계수가 다르다 — 송신자 차수 감쇠',
-  G4S.dt[2] === G4S.dt[3] && Math.abs(G4S.Ahat[0][2] - G4S.Ahat[1][3]) > 0.09);
+  G4S.dt[2] === G4S.dt[3] && Math.abs(G4S.Ahat[2][0] - G4S.Ahat[3][1]) > 0.09);
 {
   const t = frameText(site('norm-3up'));
   ok('site: raw 격차 4.25배', t.includes('4.25배'));
@@ -673,10 +932,10 @@ ok('라벨 없는 v₃을 빼면 2-hop 밖의 v₄ 예측도 바뀐다',
 
 section('명세 규약');
 const ALL = Object.keys(NI3.figures);
-// 16개다. 계보 스트립은 한 자리에만 선다 — 같은 여섯 프레임을 두 문서에서
+// 17개다. 계보 스트립은 한 자리에만 선다 — 같은 여섯 프레임을 두 문서에서
 // 다시 그리던 lineage-bridge는 삭제했다. 02의 'spectral' 한 장은 05의 아홉 장으로
-// 갈라졌다(8 − 1 + 9 = 16).
-ok('그림 16개가 등록되어 있다', ALL.length === 16, ALL.join(', '));
+// 갈라졌고(8 − 1 + 9 = 16), 05 S3의 spec-recap 한 장이 뒤에 붙었다(16 + 1 = 17).
+ok('그림 17개가 등록되어 있다', ALL.length === 17, ALL.join(', '));
 let controls = 0;
 for (const id of ALL) {
   const spec = site(id);
@@ -705,17 +964,31 @@ ok('그림 명세에 하드코딩된 4자리 이상 소수가 없다',
 /* ══ 8b. 렌더 탐침 — 실제 노드 트리의 기하 ═════════════ */
 
 section('렌더 탐침 (최소 DOM)');
+let softTotal = 0;
 for (const id of ALL) {
-  let bad = null;
+  let geo = null;
+  let over = null;
   try {
-    bad = overflows(id);
+    // 계약이 있으면 그 그림의 safeArea를 쓰고, 없으면 LAYOUT의 값을 쓴다.
+    const con = site(id).contract;
+    const safe = con && con.frames && con.frames.safeArea != null
+      ? con.frames.safeArea : SAFE_AREA;
+    geo = overflows(id, safe);
+    over = overlaps(id);
   } catch (err) {
     ok(`${id}: 예외 없이 렌더된다`, false, String(err && err.message));
     continue;
   }
   ok(`${id}: 예외 없이 렌더된다`, true);
-  ok(`${id}: 모든 요소가 viewBox 안에 있다`, bad.length === 0, bad.slice(0, 3).join(' | '));
+  ok(`${id}: 글자와 면 도형이 viewBox 안에 엄격히 들어간다`,
+    geo.bad.length === 0, geo.bad.slice(0, 3).join(' | '));
+  ok(`${id}: 글자가 다른 요소와 겹치지 않는다`,
+    over.length === 0, over.slice(0, 3).join(' | '));
+  softTotal += geo.soft.length;
+  for (const s of geo.soft.slice(0, 2)) warn(`${id}: 안전 여백`, s);
+  if (geo.soft.length > 2) warn(`${id}: 안전 여백`, `그 밖에 ${geo.soft.length - 2}건 더`);
 }
+console.log(`  안전 여백(${SAFE_AREA}px) 잠식 ${softTotal}건 — 실패로 세지 않는다.`);
 {
   const { fig, frames } = render('state-transition');
   ok('figure 껍데기: figcaption이 있다',
@@ -903,6 +1176,32 @@ ok('index 첫 화면에 GNN의 상이 한 문장으로 있다',
   /\*\*GNN 블록은 그래프를 받아 같은 배선의 그래프를 돌려줍니다\.\*\*/.test(D.idx));
 ok('정전의 뜻이 첫 등장에 풀려 있다', /정전\(正典, canonical/.test(D.idx));
 
+/* (7b) 권장 읽기 순서표의 "그 문서의 그림" 칸이 그 문서의 그림을 하나도 빠뜨리지
+ *      않는가. 그림을 새로 얹으면 슬롯과 폴백은 검사에 걸려 늘어나지만 색인 표는
+ *      조용히 그대로 남는다 — 05 S3의 spec-recap이 실제로 그렇게 빠져 있었다.
+ *      각 그림의 자리는 contract.anchor(그 슬롯 바로 앞 { #… } 헤딩)가 정본이다. */
+{
+  const byPage = new Map();
+  for (const id of ALL) {
+    const c = site(id).contract || {};
+    if (!c.page || !c.anchor) continue;
+    if (!byPage.has(c.page)) byPage.set(c.page, []);
+    byPage.get(c.page).push({ id, anchor: c.anchor });
+  }
+  const rows = D.idx.split('\n').filter((l) => /^\|\s*\d+\s*\|/.test(l));
+  for (const [page, figs] of byPage) {
+    const row = rows.find((l) => l.includes(`](${page})`));
+    ok(`index 읽기 순서표에 ${page} 행이 있다`, !!row);
+    if (!row) continue;
+    const cells = row.split('|').map((s) => s.trim());
+    const figCell = cells[cells.length - 2] || '';
+    const missing = figs.filter((f) => !figCell.includes(`](${page}#${f.anchor})`));
+    ok(`index ${page} 행의 그림 칸이 그 문서의 그림 앵커를 전부 건다`,
+      missing.length === 0,
+      missing.map((f) => `${f.id} → ${page}#${f.anchor}`).join(', '));
+  }
+}
+
 // (8) 각 문서가 자기 역할을 머리에서 한 줄로 밝힌다.
 for (const [name, src] of Object.entries(D)) {
   if (name === 'idx') continue;
@@ -975,10 +1274,395 @@ for (const w of noMeeting) {
     !Object.values(D).some((s) => s.includes(w)));
 }
 
+/* ══ 10. 배치 토큰 (LAYOUT) ════════════════════════════
+ *
+ * 프레임 기하는 registry.js의 NI3.LAYOUT 하나에서만 나온다. 그림(primitives),
+ * 마운트(mount), 스타일시트(extra.css)가 같은 표를 읽는지 여기서 확인한다.
+ * 어긋난 값은 좁은 화면에서만 드러나므로 사람 눈으로는 늦게 잡힌다.
+ */
+
+section('배치 토큰 (LAYOUT)');
+{
+  const L = NI3.LAYOUT;
+  ok('registry.js가 NI3.LAYOUT을 내보낸다',
+    !!L && !!L.frame && Array.isArray(L.legacyWidths) && Array.isArray(L.spans));
+
+  const presetW = Object.values(L.frame).map((f) => f.w);
+  const allowed = new Set([...presetW, ...L.legacyWidths]);
+
+  // 그림이 실제로 쓰는 프레임을 전부 편다. 변종이 있으면 변종 상태까지 돈다.
+  const allFrames = [];
+  for (const id of ALL) {
+    const spec = site(id);
+    const states = spec.variant
+      ? spec.variant.options.map((o) => ({ [spec.variant.name]: o.value }))
+      : [{}];
+    for (const st of states) for (const f of spec.frames(st)) allFrames.push({ id, f });
+  }
+
+  const badW = [...new Set(allFrames
+    .filter(({ f }) => !allowed.has(f.vb[2]))
+    .map(({ id, f }) => `${id} ${f.vb[2]}`))];
+  ok('모든 프레임 폭이 프리셋 ∪ legacyWidths 안에 있다', badW.length === 0, badW.join(', '));
+
+  const badSpan = [...new Set(allFrames
+    .filter(({ f }) => f.span != null && !L.spans.includes(f.span))
+    .map(({ id, f }) => `${id} span=${f.span}`))];
+  ok('모든 프레임 span이 LAYOUT.spans 안에 있다 (없으면 auto)',
+    badSpan.length === 0, badSpan.join(', '));
+
+  const maxW = Math.max(...allFrames.map(({ f }) => f.vb[2]), ...presetW);
+  ok(`minStageWidth ≥ 최대 프레임 폭 + 2 (${maxW} + 2)`,
+    L.minStageWidth >= maxW + 2, `minStageWidth ${L.minStageWidth}`);
+  ok('minStageWidth는 프리셋·legacyWidths에서만 계산된다',
+    L.minStageWidth === Math.max(...presetW, ...L.legacyWidths) + 2,
+    `got ${L.minStageWidth}`);
+
+  // 스타일시트가 그 값을 실제로 받아 쓰는가 — 상수를 베껴 적으면 곧 어긋난다.
+  ok('extra.css가 --gnn-stage-min을 쓴다', CSS.includes('var(--gnn-stage-min'));
+  ok('extra.css에 맨몸 min-width: 470px이 남아 있지 않다', !/min-width:\s*470px/.test(CSS));
+  ok('mount.js가 --gnn-stage-min을 내보낸다',
+    readFileSync(join(ROOT, 'docs/javascripts/gnn/mount.js'), 'utf8')
+      .includes('--gnn-stage-min'));
+
+  // 그림 글자가 하한 밑으로 내려가면 축소된 프레임에서 읽히지 않는다.
+  const bare = CSS.replace(/\/\*[\s\S]*?\*\//g, '');
+  const small = [];
+  for (const rule of bare.matchAll(/([^{}]*)\{([^{}]*)\}/g)) {
+    if (!rule[1].includes('.gnn-')) continue;
+    for (const d of rule[2].matchAll(/font-size:\s*([\d.]+)px/g)) {
+      if (parseFloat(d[1]) < L.font.floor) small.push(`${rule[1].trim()} → ${d[1]}px`);
+    }
+  }
+  ok(`.gnn-* font-size는 전부 ${L.font.floor}px 이상`, small.length === 0, small.join(' | '));
+}
+
+/* ══ 수식 저작 규칙 (mathLint) ═════════════════════════
+ *
+ * 인라인 수식은 글줄의 일부다. 글줄보다 긴 인라인 수식은 CSS로 스크롤
+ * 상자를 만들어 줘도 읽히지 않는다 — 애초에 디스플레이($$…$$)로 써야 한다.
+ * 그래서 이 문제는 스타일시트가 아니라 원고에서 잡는다.
+ *
+ * 글리프 수는 렌더된 폭의 대용물이다. 간격 명령(\!, \quad, \displaystyle …)과
+ * 중괄호·첨자 기호는 폭을 만들지 않으므로 지우고, 매크로 하나는 글리프
+ * 하나로, 분수는 한 칸, √는 두 칸으로 환산한 뒤 남은 코드 포인트를 센다.
+ * 390px 화면의 본문 열이 대략 36글리프다.
+ *
+ * 줄 끝에 <!-- mathlint: allow --> 를 달면 그 줄은 건너뛴다. 근사 규칙이
+ * 실물 폭을 잘못 재는 경우(예: smallmatrix)를 위한 탈출구다.
+ */
+
+section('수식 저작 규칙 (mathLint)');
+{
+  const FAIL_AT = 36;
+  const WARN_AT = 28;
+
+  /** 렌더 폭의 대용물. 매크로를 글리프 수로 환산한 뒤 남은 코드 포인트를 센다. */
+  const glyphs = (tex) => [...tex
+    .replace(/\\(?:left|right|quad|qquad|displaystyle|limits)\b/g, '')
+    .replace(/\\[!,;: ]/g, '')
+    .replace(/\\operatorname\b/g, '')
+    .replace(/\\sqrt\b/g, '')
+    .replace(/\\(?:frac|tfrac|dfrac)\b/g, '')
+    .replace(/\\[a-zA-Z]+/g, '')
+    .replace(/\\[^a-zA-Z]/g, '')
+    .replace(/[{}_^]/g, '')].length;
+
+  /** 한 문서의 인라인 $…$ 를 모은다. 코드 펜스와 $$…$$ 블록은 대상이 아니다. */
+  const inlineMath = (src) => {
+    const out = [];
+    let fence = false;
+    let display = false;
+    src.split('\n').forEach((raw, i) => {
+      const t = raw.trim();
+      if (/^(```|~~~)/.test(t)) { fence = !fence; return; }
+      if (fence) return;
+      if (t === '$$') { display = !display; return; }
+      if (display) return;
+      if (/<!--\s*mathlint:\s*allow\b/.test(raw)) return;  // 뒤에 사유를 적어도 된다
+      const line = raw
+        .replace(/`[^`]*`/g, '')          // 인라인 코드 스팬
+        .replace(/\\\$/g, '')             // 이스케이프된 달러
+        .replace(/\$\$[^$]*\$\$/g, '');   // 한 줄로 쓴 디스플레이
+      for (const m of line.matchAll(/\$([^$\n]+)\$/g)) out.push({ line: i + 1, tex: m[1] });
+    });
+    return out;
+  };
+
+  let over = 0;
+  let near28 = 0;
+  let scanned = 0;
+  for (const f of readdirSync(join(ROOT, 'docs')).filter((n) => n.endsWith('.md')).sort()) {
+    for (const { line, tex } of inlineMath(readFileSync(join(ROOT, 'docs', f), 'utf8'))) {
+      scanned++;
+      const g = glyphs(tex);
+      if (g >= FAIL_AT) {
+        over++;
+        ok(`docs/${f}:${line} 인라인 ${g}글리프 — $$…$$로 내려야 한다`, false, `$${tex}$`);
+      } else if (g >= WARN_AT) {
+        near28++;
+        warn(`docs/${f}:${line} 인라인 ${g}글리프 (FAIL 기준 ${FAIL_AT})`, `$${tex}$`);
+      }
+    }
+  }
+  // 위반은 이미 한 줄에 하나씩 FAIL로 셌다. 합계까지 다시 세면 실패가 겹친다.
+  if (over === 0) ok(`인라인 수식 ${scanned}개가 전부 ${FAIL_AT}글리프 미만`, true);
+  console.log(`  인라인 수식 ${scanned}개 · FAIL ${over} · WARN ${near28} (누적 WARN ${warnings})`);
+}
+
+/* ══════════════════════════════════════════════════════════
+ * == 그림 계약 (contract) ==
+ *
+ * 그림 하나하나가 자기 자리·자기 데이터·자기 어휘·자기 폴백을 스스로 선언한다.
+ * 선언이 없으면 그림과 본문은 사람 눈으로만 이어져 있고, 한쪽을 고칠 때
+ * 다른 쪽이 조용히 어긋난다. 그래서 선언은 선택이 아니라 필수다.
+ *
+ *   contract = {
+ *     page, slot(기본 id), anchor?,
+ *     data:   { graphs: [등록부 키], ops: [gr.ops() 출력의 이름] },
+ *     frames: { count, countByState?, preset, span: [...], safeArea? },
+ *     primitives: [api에서 부를 수 있는 원시형],
+ *     text:   { maxChars: { heading, note, caption } },
+ *     fallback: { declaresFrameCount, numbers, mustMention, mustNotMention }
+ *   }
+ * ════════════════════════════════════════════════════════ */
+
+section('그림 계약 (contract)');
+{
+  /** 문서 원문. 없는 파일은 null로 두고, 그것을 쓰는 단언이 전부 실패하게 둔다. */
+  const PAGE = {};
+  const pageOf = (file) => {
+    if (!(file in PAGE)) {
+      try { PAGE[file] = readFileSync(join(ROOT, 'docs', file), 'utf8'); }
+      catch { PAGE[file] = null; }
+    }
+    return PAGE[file];
+  };
+
+  const initialState = (spec) =>
+    spec.variant ? { [spec.variant.name]: spec.variant.initial } : {};
+  const statesOf = (spec) => (spec.variant
+    ? spec.variant.options.map((o) => ({ key: String(o.value), state: { [spec.variant.name]: o.value } }))
+    : []);
+  const cps = (s) => [...String(s == null ? '' : s)].length;
+
+  /** 슬롯 <div> 안의 무JS 폴백 문단만 꺼낸다. 문서 전체를 훑으면 옆 그림 것을 집는다. */
+  function fallbackOf(src, slot) {
+    const i = src.indexOf(`data-gnn-fig="${slot}"`);
+    if (i < 0) return null;
+    const end = src.indexOf('</div>', i);
+    const block = src.slice(i, end < 0 ? src.length : end);
+    const m = /<p class="gnn-fallback">([\s\S]*?)<\/p>/.exec(block);
+    return m ? m[1] : null;
+  }
+
+  /* ── 1. 계약 자체 ──────────────────────────────────── */
+  function checkContract(spec) {
+    const id = spec.id;
+    const c = spec.contract;
+    if (!c) {
+      ok(`${id}: contract 블록이 있다`, false, 'contract 없음');
+      return null;
+    }
+    ok(`${id}: contract 블록이 있다`, true);
+
+    const slot = c.slot || id;
+    const F = c.frames || {};
+    const fr = spec.frames(initialState(spec));
+
+    ok(`${id}: frames.count가 실제 프레임 수와 같다`,
+      F.count === fr.length, `계약 ${F.count}, 실제 ${fr.length}`);
+
+    // 변종 그림은 상태마다 프레임 수가 달라질 수 있다. 상태 API로 직접 센다.
+    const cbs = F.countByState;
+    if (spec.variant) {
+      ok(`${id}: 변종 그림은 countByState를 갖는다`, !!cbs, 'countByState 없음');
+      if (cbs) {
+        for (const { key, state } of statesOf(spec)) {
+          const n = spec.frames(state).length;
+          ok(`${id}: countByState.${key}가 실제와 같다`,
+            cbs[key] === n, `계약 ${cbs[key]}, 실제 ${n}`);
+        }
+        const known = statesOf(spec).map((s) => s.key);
+        const extra = Object.keys(cbs).filter((k) => !known.includes(k));
+        ok(`${id}: countByState에 없는 상태가 섞여 있지 않다`,
+          extra.length === 0, extra.join(', '));
+      }
+    } else {
+      ok(`${id}: 변종이 아니면 countByState를 두지 않는다`, cbs == null);
+    }
+
+    const span = Array.isArray(F.span) ? F.span : null;
+    ok(`${id}: frames.span 길이 = frames.count`,
+      !!span && span.length === F.count,
+      span ? `span ${span.length}, count ${F.count}` : 'span 배열 없음');
+    if (span) {
+      const wrong = fr
+        .map((f, i) => ({ i, got: f.span == null ? 'auto' : f.span, want: span[i] }))
+        .filter((r) => r.got !== r.want);
+      ok(`${id}: 프레임마다 span이 계약과 같다 (없으면 auto)`,
+        wrong.length === 0,
+        wrong.map((r) => `f${r.i} 실제 ${r.got} ≠ 계약 ${r.want}`).join(', '));
+      const odd = span.filter((s) => !SPANS.includes(s));
+      ok(`${id}: 계약의 span 값이 LAYOUT.spans 안에 있다`, odd.length === 0, odd.join(', '));
+    }
+
+    // 데이터 출처 — 등록부에 없는 그래프나 연산자를 적으면 그림이 상수를 품는다.
+    const data = c.data || {};
+    const gs = Array.isArray(data.graphs) ? data.graphs : [];
+    const noGraph = gs.filter((k) => !(k in NI3.graphs));
+    ok(`${id}: data.graphs가 전부 NI3.graphs에 있다`, noGraph.length === 0, noGraph.join(', '));
+    const base = (gs.filter((k) => NI3.graphs[k]).length ? gs.filter((k) => NI3.graphs[k]) : ['G4'])
+      .map((k) => NI3.gr.ops(NI3.graphs[k]));
+    const opNames = Array.isArray(data.ops) ? data.ops : [];
+    const noOp = opNames.filter((n) => base.some((o) => !(n in o)));
+    ok(`${id}: data.ops가 전부 gr.ops() 출력에 있다`, noOp.length === 0, noOp.join(', '));
+
+    // 자리 — 문서·슬롯·앵커가 실제로 있는가.
+    const src = c.page ? pageOf(c.page) : null;
+    ok(`${id}: contract.page가 docs/에 있다`, !!src, `docs/${c.page}`);
+    if (src) {
+      ok(`${id}: 그 문서에 슬롯 data-gnn-fig="${slot}"이 있다`,
+        src.includes(`data-gnn-fig="${slot}"`));
+      if (c.anchor) {
+        ok(`${id}: 앵커 { #${c.anchor} 가 그 문서에 있다`, src.includes(`{ #${c.anchor}`));
+      }
+    }
+    return { c, slot, src, fr };
+  }
+
+  /* ── 2. 원시형 허용 목록 ───────────────────────────── */
+  function callsOf(spec) {
+    const calls = new Set();
+    render(spec.id, calls);                       // 초기 상태
+    // 변종은 다른 상태에서 다른 원시형을 부를 수 있다. 나머지 상태도 직접 그린다.
+    if (spec.variant && API_SAMPLE) {
+      for (const { state } of statesOf(spec)) {
+        const root = sandbox.document.createElementNS('http://www.w3.org/2000/svg', 'g');
+        for (const f of spec.frames(state)) f.draw(root, wrapApi(API_SAMPLE, calls));
+      }
+    }
+    return [...calls].sort();
+  }
+
+  function checkPrimitives(spec, used, ctx) {
+    const id = spec.id;
+    const declared = Array.isArray(ctx.c.primitives) ? ctx.c.primitives : null;
+    ok(`${id}: contract.primitives 목록이 있다`, !!declared, 'primitives 없음');
+    if (!declared) return;
+    const outside = used.filter((k) => !declared.includes(k));
+    ok(`${id}: 계약에 없는 원시형을 부르지 않는다`, outside.length === 0,
+      `초과 [${outside.join(', ')}] · 실제로 부른 것 [${used.join(', ')}] · ` +
+      `계약 [${declared.join(', ')}]`);
+    const unknown = declared.filter((k) => !UNIVERSE.includes(k));
+    ok(`${id}: 계약의 원시형 이름이 api에 실제로 있다`, unknown.length === 0, unknown.join(', '));
+  }
+
+  /* ── 4a. 무JS 폴백 ─────────────────────────────────── */
+  function checkFallback(spec, ctx) {
+    const id = spec.id;
+    const fb = ctx.c.fallback;
+    ok(`${id}: contract.fallback 블록이 있다`, !!fb, 'fallback 없음');
+    if (!fb) return;
+    const p = ctx.src ? fallbackOf(ctx.src, ctx.slot) : null;
+    ok(`${id}: 슬롯 안에 <p class="gnn-fallback">이 있다`, !!p);
+    if (!p) return;
+
+    const miss = (fb.numbers || []).filter((s) => !p.includes(s));
+    ok(`${id}: 폴백에 계약된 숫자가 전부 있다`, miss.length === 0, miss.join(' | '));
+    const say = (fb.mustMention || []).filter((s) => !p.includes(s));
+    ok(`${id}: 폴백이 말해야 할 것을 말한다`, say.length === 0, say.join(' | '));
+    const no = (fb.mustNotMention || []).filter((s) => p.includes(s));
+    ok(`${id}: 폴백에 쓰면 안 되는 말이 없다`, no.length === 0, no.join(' | '));
+    if (fb.declaresFrameCount) {
+      const want = `정지 프레임 ${(ctx.c.frames || {}).count}장`;
+      ok(`${id}: 폴백이 "${want}"을 밝힌다`, p.includes(want));
+    }
+  }
+
+  /* ── 4b. 글자 길이 ─────────────────────────────────── */
+  // 어느 클래스가 무엇인지는 primitives.js·figures.js가 실제로 붙이는 이름이다.
+  //   heading — .gnn-frame__heading (프레임 제목) · .gnn-grid__heading (격자 제목)
+  //   note    — .gnn-frame__note (프레임 안 주석)
+  //   caption — frame.caption (프레임 밑 <p class="gnn-frame__cap">)
+  const TEXT_CLASS = {
+    heading: /\bgnn-frame__heading\b|\bgnn-grid__heading\b/,
+    note: /\bgnn-frame__note\b/
+  };
+
+  function checkText(spec, ctx) {
+    const id = spec.id;
+    const max = (ctx.c.text || {}).maxChars;
+    ok(`${id}: contract.text.maxChars가 있다`, !!max, 'text.maxChars 없음');
+    if (!max) return;
+
+    const worst = { heading: null, note: null, caption: null };
+    const keep = (kind, n, k, s) => {
+      if (!worst[kind] || n > worst[kind].n) worst[kind] = { n, k, s };
+    };
+    render(id).frames.forEach((fr, k) => {
+      for (const { el } of fr.items) {
+        if (el.tagName !== 'text') continue;
+        const cl = CLS(el);
+        for (const kind of ['heading', 'note']) {
+          if (TEXT_CLASS[kind].test(cl)) keep(kind, cps(el.textContent), k, el.textContent);
+        }
+      }
+    });
+    ctx.fr.forEach((f, k) => keep('caption', cps(f.caption), k, f.caption));
+
+    for (const kind of ['heading', 'note', 'caption']) {
+      if (max[kind] == null) continue;
+      const w = worst[kind];
+      if (!w) { ok(`${id}: ${kind} 최대 ${max[kind]}자 (해당 글자 없음)`, true); continue; }
+      ok(`${id}: ${kind} 최대 ${max[kind]}자`, w.n <= max[kind],
+        `f${w.k} ${w.n}자 "${String(w.s).slice(0, 30)}…"`);
+    }
+  }
+
+  /* ── 5. 그림마다 한 바퀴 ───────────────────────────── */
+  render(ALL[0], new Set());                    // api 모양을 한 번 본다
+  const UNIVERSE = API_SAMPLE
+    ? Object.keys(API_SAMPLE).filter((k) => typeof API_SAMPLE[k] === 'function').sort()
+    : [];
+  console.log(`  api가 건네는 원시형 전체: ${UNIVERSE.join(', ')}`);
+  const nonFn = API_SAMPLE
+    ? Object.keys(API_SAMPLE).filter((k) => typeof API_SAMPLE[k] !== 'function').sort()
+    : [];
+  console.log(`  (호출이 아닌 값: ${nonFn.join(', ') || '없음'})`);
+  ok('api에 계약이 모르는 원시형이 늘어나지 않았다',
+    UNIVERSE.join(',') === ['S', 'drawAxis', 'drawBars', 'drawBlock', 'drawFeatureAxisFlow',
+      'drawGraph', 'drawGrid', 'drawNodeAxisFlow'].sort().join(','),
+    UNIVERSE.join(', '));
+
+  const seen = [];
+  for (const id of ALL) {
+    const spec = site(id);
+    const used = callsOf(spec);
+    seen.push(`${id}: [${used.map((s) => `'${s}'`).join(', ')}]`);
+    const ctx = checkContract(spec);
+    if (!ctx) continue;                          // 계약이 없으면 나머지는 물을 것이 없다
+    checkPrimitives(spec, used, ctx);
+    checkFallback(spec, ctx);
+    checkText(spec, ctx);
+  }
+  // 계약을 채워 넣는 동안만 나오는 안내다. 계약이 다 붙으면 이 줄은 사라진다.
+  if (ALL.some((id) => !site(id).contract)) {
+    console.log('  계약이 비어 있는 동안의 참고 — 그림이 실제로 부르는 원시형:');
+    for (const line of seen) console.log(`    ${line}`);
+  }
+}
+
 /* ── 결과 ─────────────────────────────────────────────── */
 
 console.log(`\n${checks - failures}/${checks} 통과`);
+if (warnings) console.log(`${warnings}건 경고${ARGS.warnAsError ? ' — --warn-as-error 이므로 실패로 센다' : ''}`);
+if (skipped) console.log(`${skipped}건은 --only/--file 로 건너뛰었다`);
 if (failures) {
   console.error(`${failures}건 실패`);
+  process.exit(1);
+}
+if (ARGS.warnAsError && warnings) {
+  console.error(`경고 ${warnings}건 — --warn-as-error`);
   process.exit(1);
 }

@@ -378,6 +378,49 @@
     source: 'G4 확장 — λ_max가 정확히 2가 아닌 그래프를 만들기 위해 5-사이클로 닫았다.'
   };
 
+  /* ══ 배치 등록부 ═══════════════════════════════════════════ */
+  /*
+   * 프레임 기하의 단일 진실. 폭·여백·글자 하한을 여기서만 정하고
+   * primitives.js(그리기), mount.js(CSS 변수), tools/verify-figures.mjs(검사)가
+   * 같은 표를 읽는다. 그림 파일이 제 폭을 스스로 정하면 무대 최소 폭과 어긋나고,
+   * 어긋난 것은 좁은 화면에서만 드러나 눈에 잘 띄지 않는다.
+   */
+
+  // 새 그림이 고를 수 있는 프레임 폭. 높이는 그림이 정한다.
+  var FRAME = {
+    half: { w: 330 },   // 2열 배치 한 칸
+    wide: { w: 452 },   // span:'full' 한 줄
+    tall: { w: 260 },   // 세로로 긴 한 칸
+    strip: { w: 204 }   // 계보 스트립의 작은 칸
+  };
+
+  // 기존 그림 전용. 새 그림은 frame 프리셋만 쓴다.
+  var LEGACY_WIDTHS = [204, 250, 260, 330, 424, 446, 452, 466, 468];
+
+  /** 프리셋과 기존 폭을 합친 최대 프레임 폭. */
+  function maxFrameWidth() {
+    var w = 0, k;
+    for (k in FRAME) {
+      if (Object.prototype.hasOwnProperty.call(FRAME, k)) w = Math.max(w, FRAME[k].w);
+    }
+    LEGACY_WIDTHS.forEach(function (v) { w = Math.max(w, v); });
+    return w;
+  }
+
+  var LAYOUT = {
+    frame: FRAME,
+    legacyWidths: LEGACY_WIDTHS,
+    safeArea: 6,                          // viewBox 가장자리에서 띄우는 최소 여백
+    gap: { textText: 1.5 },               // 글자와 글자 사이 최소 간격
+    spans: ['auto', 'full'],              // frame.span이 가질 수 있는 값 전부
+    font: { floor: 9 },                   // 그림 글자 크기의 하한(px)
+    cell: { sm: [24, 14], md: [36, 24], lg: [52, 24] },  // 칸(C) 크기 [w, h]
+    ring: { pad: 8 },                     // 테(R)가 원반 바깥으로 더 무는 폭
+    // 무대 최소 폭 = 가장 넓은 프레임 + 2. mount.js가 --gnn-stage-min으로 내보내고
+    // extra.css가 그대로 쓴다. 배율이 1 밑으로 떨어지지 않게 하는 유일한 수치다.
+    minStageWidth: maxFrameWidth() + 2
+  };
+
   /* ══ 공개 ══════════════════════════════════════════════════ */
 
   NI3.la = {
@@ -389,6 +432,8 @@
   };
 
   NI3.graphs = { G4: G4, G4star: G4star, G4tri: G4tri, G4circ: G4circ };
+
+  NI3.LAYOUT = LAYOUT;
 
   NI3.gr = {
     ops: ops,

@@ -61,6 +61,9 @@ NI3 내부 기초 스터디를 위한 한국어 학습 자료다. 독자는 다�
 - `design/visual-lineage/`: 시각 계보 설계 문서(공개 사이트에는 포함되지 않는다)
 - `design/script/`, `design/diagnosis/`, `design/persona/`: 문서 대본과 진단·페르소나 검토 기록(공개 사이트에는 포함되지 않는다)
 - `tools/verify-figures.mjs`: 그림·본문 수치와 명세 규약을 한 번에 검사하는 게이트
+- `tools/build.ps1`: 엄격 빌드 + 매니페스트 기록(렌더 검사 전에 한 번)
+- `tools/build-manifest.mjs`: `site/`가 지금의 `docs/`에서 나온 것인지 판정한다(`--check`)
+- `tools/render-qa.mjs`: 실제 Chrome에서 세 폭 × 두 색 구성표를 훑는 렌더 검사(세션당 한 번)
 - `sources/kipf2017.pdf`: 제공된 논문 원본
 - `sources/Gentle introduction to GNN.txt`: 제공된 URL 파일
 
@@ -123,8 +126,19 @@ python -m venv .venv
 
 숫자 외에 **의미 불변량**과 **기하**도 같은 스크립트가 본다. 상태 전이 그림에 국소 예시가 정확히 두 장(내부 정점 하나, 잎 정점 하나)인지, 다음 층으로의 인계가 캡션과 그림 양쪽에 있는지, 집계 그림에서 화살이 한 점으로 모이는 자리가 몇 곳인지를 확인한다. 또 최소 DOM을 만들어 `primitives.js`가 실제로 그리는 노드 트리를 세우고, 모든 요소가 프레임의 `viewBox` 안에 있는지 검사한다(브라우저 자동화 없이 잘린 글자를 잡기 위한 것이다). 슬롯·폴백 개수와 문서 간 앵커 링크, 읽는 순서(nav·index·README)도 같은 게이트가 본다.
 
+검사는 세 단계로 돈다. 위로 갈수록 자주, 아래로 갈수록 드물게 돌린다.
+
+1. **고친 것만** — `node tools/verify-figures.mjs --only <그림 id>` 또는 `--file docs/03_bridge_mlp_to_gcn.md`. 그림별·문서별 검사만 남기고 전역 규약 검사는 그대로 돈다(`--list`로 id를 본다). 모르는 플래그는 종료 코드 2다.
+2. **전부** — 인자 없이 `node tools/verify-figures.mjs`. 계약(contract)·수치·기하·본문까지 전부 본다. 게이트를 조일 때는 `--warn-as-error`를 붙여 WARN도 실패로 센다.
+3. **렌더 한 번** — `.\tools\build.ps1` 로 빌드한 뒤 `node tools/render-qa.mjs` 를 **세션당 한 번만** 돌린다. 페이지 × (390·768·1440) × (밝게·어둡게)를 실제 Chrome에서 훑어 마운트 수, 콘솔 오류, `mjx-merror`, 가로 스크롤, 슬롯 밖으로 나간 SVG를 본다. 결과는 `.cache/qa/render/report.json`과 `.cache/qa/render/*.png`에 남는다. **뒤에 보는 사람은 Chrome을 다시 띄우지 말고 이 report.json을 읽는다** — 같은 화면을 두 번 찍는 것은 비싸고, 그 사이에 문서가 바뀌면 두 기록이 서로 다른 사이트를 말하게 된다.
+
+매니페스트 규칙: `tools/build.ps1`은 빌드 직후 `docs/**`와 `mkdocs.yml`의 sha256을 `site/build-manifest.json`에 적는다. `render-qa.mjs`는 시작하자마자 `node tools/build-manifest.mjs --check`로 그 해시를 대조하고, 어긋나면 **Chrome을 띄우지 않고** 1로 끝난다. 낡은 `site/`를 찍은 스크린샷은 거짓 통과와 거짓 실패를 함께 만든다.
+
+`--window-size` 함정: Windows 헤드리스 Chrome에서 `--window-size=1440,900`은 요청대로 적용되지 않는다. 창 크기가 호스트 화면·DPI에 눌려 조용히 작아지고, 그러면 "데스크톱 폭에서 멀쩡하다"가 사실은 더 좁은 폭의 결론이 된다. `render-qa.mjs`는 창 크기를 건드리지 않고 CDP의 `Emulation.setDeviceMetricsOverride`로 레이아웃 뷰포트를 고정한 뒤, 실제 폭을 `document.documentElement.clientWidth`로 되읽어 표에 적는다(`window.innerWidth`는 모바일 에뮬레이션의 shrink-to-fit 때문에 내용이 넘치면 따라 커지므로 뷰포트 판정에 쓰지 않는다).
+
 ```powershell
 node tools/verify-figures.mjs
+.\tools\build.ps1 ; node tools/render-qa.mjs
 node --check docs/javascripts/gnn/registry.js
 node --check docs/javascripts/gnn/primitives.js
 node --check docs/javascripts/gnn/figures.js
